@@ -1,4 +1,4 @@
-export type NodeStatus = "pending" | "streaming" | "answered" | "failed";
+export type NodeStatus = "pending" | "streaming" | "answered" | "stopped" | "failed";
 
 export type Source = { title: string; url: string };
 
@@ -29,6 +29,7 @@ export type Node = {
   sources: Source[];
   followups: string[];
   status: NodeStatus;
+  error: string;
   createdAt: number;
   updatedAt: number;
 };

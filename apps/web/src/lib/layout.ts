@@ -1,9 +1,9 @@
 export type Position = { x: number; y: number };
 
-const WIDTH = 320;
-const HEIGHT = 172;
+export const CARD_WIDTH = 320;
+export const CARD_HEIGHT = 240;
 const GAP_X = 56;
-const GAP_Y = 88;
+const GAP_Y = 112;
 
 export function layoutTree(
   nodes: { id: string; parentId: string | null }[],
@@ -15,7 +15,9 @@ export function layoutTree(
 
   for (const node of nodes) {
     if (node.parentId && ids.has(node.parentId)) {
-      children.set(node.parentId, [...(children.get(node.parentId) ?? []), node.id]);
+      const siblings = children.get(node.parentId);
+      if (siblings) siblings.push(node.id);
+      else children.set(node.parentId, [node.id]);
     } else {
       roots.push(node.id);
     }
@@ -27,7 +29,7 @@ export function layoutTree(
   if (compact) {
     const stack = (id: string) => {
       positions[id] = { x: 0, y: cursor };
-      cursor += HEIGHT + GAP_Y;
+      cursor += CARD_HEIGHT + GAP_Y;
       (children.get(id) ?? []).forEach(stack);
     };
     roots.forEach(stack);
@@ -36,16 +38,16 @@ export function layoutTree(
 
   const place = (id: string, depth: number): number => {
     const kids = children.get(id) ?? [];
-    const y = depth * (HEIGHT + GAP_Y);
+    const y = depth * (CARD_HEIGHT + GAP_Y);
     if (kids.length === 0) {
       positions[id] = { x: cursor, y };
-      const center = cursor + WIDTH / 2;
-      cursor += WIDTH + GAP_X;
+      const center = cursor + CARD_WIDTH / 2;
+      cursor += CARD_WIDTH + GAP_X;
       return center;
     }
     const centers = kids.map((kid) => place(kid, depth + 1));
     const center = (centers[0] + centers[centers.length - 1]) / 2;
-    positions[id] = { x: center - WIDTH / 2, y };
+    positions[id] = { x: center - CARD_WIDTH / 2, y };
     return center;
   };
 

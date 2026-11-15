@@ -1,20 +1,22 @@
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Node as BurrowNode } from "@deepburrow/types";
 import {
   Background,
   Controls,
   MarkerType,
   ReactFlow,
+  useReactFlow,
   type Edge,
   type NodeTypes,
 } from "@xyflow/react";
-import { layoutTree } from "@/lib/layout";
-import { NodeCard, type CardNode } from "./node-card";
+import { CARD_HEIGHT, CARD_WIDTH, layoutTree, type Position } from "@/lib/layout";
+import { NodeCard, type CardNodeData } from "./node-card";
 
 const nodeTypes = { card: NodeCard } as NodeTypes;
 
 const MOBILE_QUERY = "(max-width: 640px)";
+const FOLLOW_UP_DRAWER_HEIGHT = 96;
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
@@ -27,15 +29,62 @@ function useIsMobile() {
   return mobile;
 }
 
-export function Canvas({ nodes }: { nodes: BurrowNode[] }) {
+function CameraController({
+  id,
+  parentId,
+  positions,
+  compact,
+}: {
+  id?: string;
+  parentId?: string | null;
+  positions: Record<string, Position>;
+  compact: boolean;
+}) {
+  const { setViewport } = useReactFlow();
+  const seen = useRef(id);
+
+  useEffect(() => {
+    if (!id || id === seen.current || !positions[id]) return;
+    seen.current = id;
+    const boxes = [
+      { ...positions[id], height: CARD_HEIGHT + FOLLOW_UP_DRAWER_HEIGHT },
+      ...(!compact && parentId && positions[parentId]
+        ? [{ ...positions[parentId], height: CARD_HEIGHT }]
+        : []),
+    ];
+    const minX = Math.min(...boxes.map((box) => box.x));
+    const minY = Math.min(...boxes.map((box) => box.y));
+    const width = Math.max(...boxes.map((box) => box.x)) - minX + CARD_WIDTH;
+    const height = Math.max(...boxes.map((box) => box.y + box.height)) - minY;
+    const zoom = Math.min(1, (window.innerWidth - 48) / width, (window.innerHeight - 48) / height);
+    void setViewport(
+      {
+        x: (window.innerWidth - width * zoom) / 2 - minX * zoom,
+        y: (window.innerHeight - height * zoom) / 2 - minY * zoom,
+        zoom,
+      },
+      { duration: 250 },
+    );
+  }, [id, parentId, positions, compact, setViewport]);
+
+  return null;
+}
+
+type CanvasProps = {
+  nodes: BurrowNode[];
+  drafts: Record<string, string>;
+} & Omit<CardNodeData, "item" | "draft">;
+
+export function Canvas({ nodes, drafts, ...handlers }: CanvasProps) {
   const compact = useIsMobile();
   const positions = useMemo(() => layoutTree(nodes, compact), [nodes, compact]);
+  const last = nodes.at(-1);
 
-  const flowNodes: CardNode[] = nodes.map((item) => ({
+  const flowNodes = nodes.map((item) => ({
     id: item.id,
     type: "card",
     position: positions[item.id] ?? { x: 0, y: 0 },
-    data: { item },
+    data: { item, draft: drafts[item.id] ?? "", ...handlers },
   }));
 
   const edges: Edge[] = nodes
@@ -66,7 +115,7 @@ export function Canvas({ nodes }: { nodes: BurrowNode[] }) {
         nodeTypes={nodeTypes}
         defaultViewport={
           compact
-            ? { x: Math.max(12, (window.innerWidth - 320) / 2), y: 24, zoom: 1 }
+            ? { x: Math.max(12, (window.innerWidth - CARD_WIDTH) / 2), y: 24, zoom: 1 }
             : undefined
         }
         fitView={!compact}
@@ -76,6 +125,12 @@ export function Canvas({ nodes }: { nodes: BurrowNode[] }) {
         minZoom={compact ? 0.5 : 0.2}
         maxZoom={2}
       >
+        <CameraController
+          id={last?.id}
+          parentId={last?.parentId}
+          positions={positions}
+          compact={compact}
+        />
         <Background gap={24} />
         <Controls showInteractive={false} />
       </ReactFlow>

@@ -30,10 +30,10 @@ Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, 
 - **Entry.** Empty burrow = one composer → root card.
 - **Asking.** Select text → popover: input + 3 preset pills, keys 1–3 → selection highlighted, pending card beside source, edge drawn.
 - **Streaming.** Answer renders in-card. States: pending, streaming, answered, failed+retry.
-- **Follow-up.** Each answered card has its own composer, same preset row.
+- **Follow-up.** Each answered card has a hover handle under it; clicking slides out a drawer with the same preset row. The body stays fully readable.
 - **⌘K.** Searches titles and ask text.
 - **Notes.** Margin note per card, human or agent, chip, fed to later prompts.
-- **Follow-up chips.** Content-specific questions from the answer; click fills composer, doesn't submit.
+- **Follow-up chips.** Content-specific questions from the answer; click fills the drawer, doesn't submit.
 - **Presets.** Settings: label + instruction, two sets, linkable.
 - **Sources.** Row under search-backed cards, parsed from the header.
 - **Errors.** Failed keeps card + reason + retry. Aborted keeps partial text.
@@ -56,7 +56,7 @@ plan → (gaps? search → compose → judge → gaps?) → summarize → END
 
 Nodes are `(state) => state`, no I/O. Model, search, DB, stream are adapters at the edge. Replay a state, same result. System prompt rebuilt every call — we persist completions only.
 
-`ask` is the final text from FE; presets applied client-side, backend never knows which fired.
+`ask` is the final text from FE; presets applied client-side, backend never knows which fired. Node ids are server-minted on create; the FE adopts the id from the first stream event, and retries reuse it.
 
 # Loop rules
 Only `summarize` writes user-visible text; everything before is notes. Stop when any fires:

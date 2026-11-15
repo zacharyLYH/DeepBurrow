@@ -27,6 +27,7 @@ CREATE TABLE nodes (
   sources TEXT NOT NULL DEFAULT '[]',
   followups TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'pending',
+  error TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

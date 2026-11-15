@@ -51,3 +51,127 @@
     @apply bg-background text-foreground;
   }
 }
+
+.db-card-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 12px;
+  background: color-mix(in oklch, var(--muted) 45%, var(--card));
+  border-bottom: 1px solid var(--border);
+  border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
+}
+.db-card-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.db-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.db-follow-up-drawer {
+  position: absolute;
+  top: calc(100% + 1px);
+  right: -11px;
+  left: -11px;
+  pointer-events: none;
+}
+.db-follow-up-drawer.open {
+  pointer-events: auto;
+}
+.db-follow-up-clip {
+  padding: 0 10px 14px;
+  overflow: hidden;
+}
+.db-follow-up-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 4px 10px -6px rgb(0 0 0 / 0.3);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transform: translateX(-50%);
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
+}
+.db-card:hover .db-follow-up-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+.db-follow-up-handle:hover {
+  color: var(--foreground);
+}
+.db-follow-up-drawer.open .db-follow-up-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+.db-follow-up-drawer.has-draft .db-follow-up-handle::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  background: var(--foreground);
+  border-radius: 50%;
+}
+.db-follow-up-plus {
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1;
+}
+.db-follow-up-panel {
+  margin-top: 5px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgb(28 25 18 / 0.08);
+  opacity: 0;
+  pointer-events: auto;
+  transform: translateY(calc(-100% - 34px));
+  transition:
+    transform 340ms cubic-bezier(0.3, 1.4, 0.45, 1),
+    opacity 160ms ease,
+    border-color 120ms ease;
+}
+.db-follow-up-drawer.open .db-follow-up-panel {
+  opacity: 1;
+  transform: translateY(0);
+}
+.db-follow-up-panel:focus-within {
+  border-color: color-mix(in oklch, var(--ring) 55%, var(--border));
+}
+
+@media (hover: none), (pointer: coarse) {
+  .db-follow-up-handle {
+    opacity: 1;
+    pointer-events: auto;
+    transition: none;
+  }
+  .db-follow-up-drawer.open .db-follow-up-handle {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
