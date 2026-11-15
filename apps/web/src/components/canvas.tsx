@@ -52,7 +52,7 @@ export function Canvas({ nodes }: { nodes: BurrowNode[] }) {
   if (nodes.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-        Ask a question to start a hole.
+        Ask a question to start a burrow.
       </div>
     );
   }

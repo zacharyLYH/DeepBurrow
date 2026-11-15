@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 import { createMockServer } from "../apps/api/src/mock-sse.ts";
 import { parseHeader, parseEvent } from "../packages/types/src/header.ts";
-import { fixtureEvents, fixtureHole, fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { fixtureEvents, fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
 import type { Event } from "../packages/types/src/types.ts";
 
 const schema = readFileSync(new URL("../db/migrations/001_init.sql", import.meta.url), "utf8");
@@ -16,22 +16,22 @@ test("schema applies and stores a fixture node", () => {
 
   const node = fixtureNodes[0];
   db.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").run(
-    fixtureHole.userId,
+    fixtureBurrow.userId,
     "fixture@example.com",
-    fixtureHole.createdAt,
+    fixtureBurrow.createdAt,
   );
-  db.prepare("INSERT INTO holes (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
-    fixtureHole.id,
-    fixtureHole.userId,
-    fixtureHole.title,
-    fixtureHole.createdAt,
-    fixtureHole.updatedAt,
+  db.prepare("INSERT INTO burrows (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+    fixtureBurrow.id,
+    fixtureBurrow.userId,
+    fixtureBurrow.title,
+    fixtureBurrow.createdAt,
+    fixtureBurrow.updatedAt,
   );
   db.prepare(
-    "INSERT INTO nodes (id, hole_id, parent_id, title, markdown, origin, sources, followups, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO nodes (id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     node.id,
-    node.holeId,
+    node.burrowId,
     node.parentId,
     node.title,
     node.markdown,
@@ -52,14 +52,14 @@ test("schema applies and stores a fixture node", () => {
   db.close();
 });
 
-test("mock server serves the fixture hole and a well-formed stream", async () => {
+test("mock server serves the fixture burrow and a well-formed stream", async () => {
   const server = createMockServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   const base = `http://localhost:${port}`;
 
   try {
-    expect(await (await fetch(`${base}/hole`)).json()).toEqual(fixtureHole);
+    expect(await (await fetch(`${base}/burrow`)).json()).toEqual(fixtureBurrow);
 
     const stream = await (await fetch(`${base}/ask`)).text();
     const events = stream

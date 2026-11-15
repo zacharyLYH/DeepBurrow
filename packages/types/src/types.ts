@@ -11,7 +11,7 @@ export type Origin = {
   anchor?: string;
 };
 
-export type Hole = {
+export type Burrow = {
   id: string;
   userId: string;
   title: string;
@@ -21,7 +21,7 @@ export type Hole = {
 
 export type Node = {
   id: string;
-  holeId: string;
+  burrowId: string;
   parentId: string | null;
   title: string;
   markdown: string;
@@ -34,7 +34,7 @@ export type Node = {
 };
 
 export type State = {
-  holeId: string;
+  burrowId: string;
   nodeId: string;
   lineage: string;
   ask: string;

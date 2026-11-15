@@ -1,5 +1,5 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
-import { fixtureEvents, fixtureHole } from "../../../packages/types/src/fixtures.ts";
+import { fixtureEvents, fixtureBurrow } from "../../../packages/types/src/fixtures.ts";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -12,8 +12,8 @@ export function createMockServer(): Server {
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
 
-    if (url.pathname === "/hole") {
-      send(res, 200, JSON.stringify(fixtureHole), "application/json");
+    if (url.pathname === "/burrow") {
+      send(res, 200, JSON.stringify(fixtureBurrow), "application/json");
       return;
     }
 

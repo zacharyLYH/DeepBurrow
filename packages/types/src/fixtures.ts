@@ -1,9 +1,9 @@
-import type { Event, Hole, Node } from "./types.ts";
+import type { Event, Burrow, Node } from "./types.ts";
 
 const T = 1_760_000_000_000;
 
-export const fixtureHole: Hole = {
-  id: "hole_fixture",
+export const fixtureBurrow: Burrow = {
+  id: "burrow_fixture",
   userId: "user_fixture",
   title: "TCP congestion control",
   createdAt: T,
@@ -13,7 +13,7 @@ export const fixtureHole: Hole = {
 export const fixtureNodes: Node[] = [
   {
     id: "node_root",
-    holeId: fixtureHole.id,
+    burrowId: fixtureBurrow.id,
     parentId: null,
     title: "TCP congestion control",
     markdown:
@@ -27,7 +27,7 @@ export const fixtureNodes: Node[] = [
   },
   {
     id: "node_why",
-    holeId: fixtureHole.id,
+    burrowId: fixtureBurrow.id,
     parentId: "node_root",
     title: "Why double per RTT?",
     markdown:
@@ -41,7 +41,7 @@ export const fixtureNodes: Node[] = [
   },
   {
     id: "node_cubic",
-    holeId: fixtureHole.id,
+    burrowId: fixtureBurrow.id,
     parentId: "node_root",
     title: "When does CUBIC win?",
     markdown:
@@ -55,7 +55,7 @@ export const fixtureNodes: Node[] = [
   },
   {
     id: "node_long",
-    holeId: fixtureHole.id,
+    burrowId: fixtureBurrow.id,
     parentId: "node_root",
     title: "TCP vs QUIC congestion",
     markdown:

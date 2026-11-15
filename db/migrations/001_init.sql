@@ -9,7 +9,7 @@ CREATE TABLE users (
   search TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE TABLE holes (
+CREATE TABLE burrows (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE holes (
 
 CREATE TABLE nodes (
   id TEXT PRIMARY KEY,
-  hole_id TEXT NOT NULL REFERENCES holes(id) ON DELETE CASCADE,
+  burrow_id TEXT NOT NULL REFERENCES burrows(id) ON DELETE CASCADE,
   parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   markdown TEXT NOT NULL DEFAULT '',
@@ -31,4 +31,4 @@ CREATE TABLE nodes (
   updated_at INTEGER NOT NULL
 );
 
-CREATE INDEX nodes_by_hole ON nodes(hole_id, parent_id);
+CREATE INDEX nodes_by_burrow ON nodes(burrow_id, parent_id);

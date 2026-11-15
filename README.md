@@ -1,5 +1,5 @@
 # DeepBurrow
-Cloud synced, BYOK, infinite canvas rabbit hole.
+Cloud synced, BYOK, infinite canvas rabbitholing.
 
 # What
 Deep dives branch; chat bubbles can't. [rabbithole.ing](https://rabbithole.ing/about/) has the right shape but isn't web app first. We keep the UIUX and drift here:
@@ -27,7 +27,7 @@ Reference is vanilla JS + esbuild. We reimplement in React.
 Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, Sheet, Sonner), `react-markdown` + remark/rehype + katex + mermaid. No tldraw/Excalidraw. Tree auto-tidy is ours, ~100 lines.
 
 - **One canvas.** Cards on a plane, parent→child edges. No separate reader view; long answers scroll inside the card.
-- **Entry.** Empty hole = one composer → root card.
+- **Entry.** Empty burrow = one composer → root card.
 - **Asking.** Select text → popover: input + 3 preset pills, keys 1–3 → selection highlighted, pending card beside source, edge drawn.
 - **Streaming.** Answer renders in-card. States: pending, streaming, answered, failed+retry.
 - **Follow-up.** Each answered card has its own composer, same preset row.
@@ -41,7 +41,7 @@ Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, 
 LangGraph. State machine, testable as data.
 
 ```ts
-type State = { holeId; nodeId; lineage; ask: string; gaps: string[]; round: number; queries: string[]; searchRaw: string; notes: string; answer; title; sources; followups; error };
+type State = { burrowId; nodeId; lineage; ask: string; gaps: string[]; round: number; queries: string[]; searchRaw: string; notes: string; answer; title; sources; followups; error };
 ```
 
 ```
@@ -92,10 +92,10 @@ users(id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NU
   base_url TEXT, model TEXT, api_key_enc BLOB, verified_at INTEGER,
   search TEXT NOT NULL DEFAULT '{}');  -- json: curl + key_enc + timeout
 
-holes(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+burrows(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 
-nodes(id TEXT PRIMARY KEY, hole_id TEXT NOT NULL REFERENCES holes(id) ON DELETE CASCADE,
+nodes(id TEXT PRIMARY KEY, burrow_id TEXT NOT NULL REFERENCES burrows(id) ON DELETE CASCADE,
   parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
   title TEXT NOT NULL, markdown TEXT NOT NULL DEFAULT '',
   origin TEXT NOT NULL,                -- json: selected_text, question, preset{label,instruction}, anchor
@@ -103,7 +103,7 @@ nodes(id TEXT PRIMARY KEY, hole_id TEXT NOT NULL REFERENCES holes(id) ON DELETE 
   status TEXT NOT NULL DEFAULT 'pending',
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 
-CREATE INDEX nodes_by_hole ON nodes(hole_id, parent_id);
+CREATE INDEX nodes_by_burrow ON nodes(burrow_id, parent_id);
 ```
 
 `origin` is UI provenance only; prompts come from `markdown` + lineage.

@@ -24,7 +24,7 @@ Contract = shared types + DB schema + event list. Both build to it, neither bloc
 
 | # | Scope | Exit test |
 |---|---|---|
-| M0 | Contract + scaffold: types, schema, event spec, mock SSE, test harness | Contract suite green; FE renders a fixture hole |
+| M0 | Contract + scaffold: types, schema, event spec, mock SSE, test harness | Contract suite green; FE renders a fixture burrow |
 | M1 | FE canvas: xyflow plane, tree layout, cards, edges | Playwright: pan, zoom, long body scrolls, layout no overlap |
 | M2 | FE asking + light dark mode toggle + streaming: popover, pills, pending→streaming→answered, header strip, retry | Playwright vs mock SSE: 4 states; title, sources, chips appear |
 | M3 | BE core, no search: repo, `plan/compose/summarize`, fake model, SSE out | Unit: nodes pure + replay. API: one node row, correct event sequence |
