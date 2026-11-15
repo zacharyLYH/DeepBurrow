@@ -1,15 +1,16 @@
 import { fixtureHole, fixtureNodes } from "@deepburrow/types";
+import { Canvas } from "@/components/canvas";
 
 export function App() {
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 p-6">
-      <h1 className="text-2xl font-semibold">{fixtureHole.title}</h1>
-      {fixtureNodes.map((node) => (
-        <article key={node.id} className="flex flex-col gap-2 rounded-lg border p-4">
-          <h2 className="font-medium">{node.title}</h2>
-          <p>{node.markdown}</p>
-        </article>
-      ))}
-    </main>
+    <div className="relative h-dvh w-full overflow-hidden">
+      <Canvas nodes={fixtureNodes} />
+      <div
+        data-testid="hole-title"
+        className="pointer-events-none absolute left-4 top-3 z-10 hidden text-sm text-muted-foreground sm:block"
+      >
+        {fixtureHole.title}
+      </div>
+    </div>
   );
 }

@@ -25,8 +25,8 @@ Contract = shared types + DB schema + event list. Both build to it, neither bloc
 | # | Scope | Exit test |
 |---|---|---|
 | M0 | Contract + scaffold: types, schema, event spec, mock SSE, test harness | Contract suite green; FE renders a fixture hole |
-| M1 | FE canvas + reader: xyflow plane, tree layout, cards, edges, view switch | Playwright: pan, zoom, open reader, back, position preserved |
-| M2 | FE asking + streaming: popover, pills, pending→streaming→answered, header strip, retry | Playwright vs mock SSE: 4 states; title, sources, chips appear |
+| M1 | FE canvas: xyflow plane, tree layout, cards, edges | Playwright: pan, zoom, long body scrolls, layout no overlap |
+| M2 | FE asking + light dark mode toggle + streaming: popover, pills, pending→streaming→answered, header strip, retry | Playwright vs mock SSE: 4 states; title, sources, chips appear |
 | M3 | BE core, no search: repo, `plan/compose/summarize`, fake model, SSE out | Unit: nodes pure + replay. API: one node row, correct event sequence |
 | M4 | Loop: `judge`, gap tracking, caps | Scripted fake model forces 3 rounds and each stop condition; assert call counts |
 | M5 | Search: curl executor, 20k cap, untrusted label, verbatim-URL filter | Fixture search server: one call per round, junk URLs dropped, failure → empty and still answers |

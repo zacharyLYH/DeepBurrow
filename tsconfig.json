@@ -12,7 +12,8 @@
     "verbatimModuleSyntax": true,
     "types": ["node"],
     "paths": {
-      "@deepburrow/types": ["./packages/types/src/index.ts"]
+      "@deepburrow/types": ["./packages/types/src/index.ts"],
+      "@/*": ["./apps/web/src/*"]
     }
   },
   "include": [

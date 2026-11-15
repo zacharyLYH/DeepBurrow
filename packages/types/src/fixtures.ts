@@ -25,6 +25,48 @@ export const fixtureNodes: Node[] = [
     createdAt: T,
     updatedAt: T,
   },
+  {
+    id: "node_why",
+    holeId: fixtureHole.id,
+    parentId: "node_root",
+    title: "Why double per RTT?",
+    markdown:
+      "Each ACK acknowledges two segments once the pipe is full, so the window grows by one per ACK. One RTT of ACKs doubles the window.",
+    origin: { question: "Why does slow start double per RTT?" },
+    sources: [],
+    followups: [],
+    status: "answered",
+    createdAt: T + 1,
+    updatedAt: T + 1,
+  },
+  {
+    id: "node_cubic",
+    holeId: fixtureHole.id,
+    parentId: "node_root",
+    title: "When does CUBIC win?",
+    markdown:
+      "On high bandwidth-delay product links CUBIC's cubic growth curve refills the window faster after loss, especially on long fat networks.",
+    origin: { question: "When does CUBIC beat Reno?" },
+    sources: [],
+    followups: [],
+    status: "answered",
+    createdAt: T + 2,
+    updatedAt: T + 2,
+  },
+  {
+    id: "node_long",
+    holeId: fixtureHole.id,
+    parentId: "node_root",
+    title: "TCP vs QUIC congestion",
+    markdown:
+      "QUIC runs congestion control in userspace, so it can iterate faster than kernel TCP. It reuses the same Reno and CUBIC ideas but ships new algorithms with the application.\n\nLoss detection differs. QUIC uses packet numbers that never repeat, so it avoids TCP's retransmission ambiguity and can distinguish a lost ACK from a lost packet without waiting for a timeout.\n\nHead-of-line blocking moves to the stream level. A lost packet stalls only the stream it belongs to, not every multiplexed request sharing the connection.\n\nHandshakes fold transport and crypto together. One round trip establishes keys and congestion state, and zero round trip resumes are possible after a prior connection.\n\nMigration keeps the connection alive across network changes. A phone switching from Wi-Fi to cellular can continue without tearing down congestion state, because the connection is identified by an ID rather than the address tuple.\n\nDeployment still needs a fallback. Middleboxes can drop unfamiliar UDP, so browsers race QUIC against TCP and keep the winner, which means both stacks must stay healthy.",
+    origin: { question: "How does QUIC congestion control differ from TCP?" },
+    sources: [],
+    followups: [],
+    status: "answered",
+    createdAt: T + 3,
+    updatedAt: T + 3,
+  },
 ];
 
 export const fixtureEvents: Event[] = [

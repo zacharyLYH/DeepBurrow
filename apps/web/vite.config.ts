@@ -10,6 +10,7 @@ export default defineConfig({
       "@deepburrow/types": fileURLToPath(
         new URL("../../packages/types/src/index.ts", import.meta.url),
       ),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
 });

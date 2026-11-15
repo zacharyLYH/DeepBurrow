@@ -26,12 +26,11 @@ Reference is vanilla JS + esbuild. We reimplement in React.
 
 Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, Sheet, Sonner), `react-markdown` + remark/rehype + katex + mermaid. No tldraw/Excalidraw. Tree auto-tidy is ours, ~100 lines.
 
-- **Two views, one tree.** Reader = one doc, 800px serif column. Canvas = cards on a plane, parent→child edges. Switching keeps place.
+- **One canvas.** Cards on a plane, parent→child edges. No separate reader view; long answers scroll inside the card.
 - **Entry.** Empty hole = one composer → root card.
 - **Asking.** Select text → popover: input + 3 preset pills, keys 1–3 → selection highlighted, pending card beside source, edge drawn.
 - **Streaming.** Answer renders in-card. States: pending, streaming, answered, failed+retry.
 - **Follow-up.** Each answered card has its own composer, same preset row.
-- **Reading.** Click a card → reader.
 - **⌘K.** Searches titles and ask text.
 - **Notes.** Margin note per card, human or agent, chip, fed to later prompts.
 - **Follow-up chips.** Content-specific questions from the answer; click fills composer, doesn't submit.
