@@ -1,0 +1,21 @@
+{
+  "name": "deepburrow",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @deepburrow/web",
+    "build": "npm run build -w @deepburrow/web",
+    "mock": "npm run mock -w @deepburrow/api",
+    "lint": "tsc --noEmit",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

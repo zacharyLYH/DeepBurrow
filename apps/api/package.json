@@ -1,0 +1,8 @@
+{
+  "name": "@deepburrow/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "node src/mock-sse.ts"
+  }
+}

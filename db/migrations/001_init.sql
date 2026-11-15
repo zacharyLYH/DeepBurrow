@@ -1,0 +1,34 @@
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  created_at INTEGER NOT NULL,
+  base_url TEXT,
+  model TEXT,
+  api_key_enc BLOB,
+  verified_at INTEGER,
+  search TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE holes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE nodes (
+  id TEXT PRIMARY KEY,
+  hole_id TEXT NOT NULL REFERENCES holes(id) ON DELETE CASCADE,
+  parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  markdown TEXT NOT NULL DEFAULT '',
+  origin TEXT NOT NULL,
+  sources TEXT NOT NULL DEFAULT '[]',
+  followups TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX nodes_by_hole ON nodes(hole_id, parent_id);

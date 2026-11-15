@@ -36,7 +36,7 @@ Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, 
 - **Notes.** Margin note per card, human or agent, chip, fed to later prompts.
 - **Follow-up chips.** Content-specific questions from the answer; click fills composer, doesn't submit.
 - **Presets.** Settings: label + instruction, two sets, linkable.
-- **Sources.** Row under search-backed cards, parsed from the envelope.
+- **Sources.** Row under search-backed cards, parsed from the header.
 - **Errors.** Failed keeps card + reason + retry. Aborted keeps partial text.
 # Backend
 LangGraph. State machine, testable as data.
@@ -51,9 +51,9 @@ plan → (gaps? search → compose → judge → gaps?) → summarize → END
 
 - `plan` → `gaps`. Trigger-happy: weak reason to research is enough. URL in ask = one gap, verbatim. No search config → no gaps.
 - `search` → one call per round, queries from top gap, `searchRaw` = stringified response. Failure → `""`.
-- `compose` → notes from lineage + ask + `searchRaw`, appended to `notes`. No envelope.
+- `compose` → notes from lineage + ask + `searchRaw`, appended to `notes`. No header.
 - `judge` → resolves/adds gaps, sets `done`. Small JSON.
-- `summarize` → lineage + ask + `notes` + gaps → envelope, returns `{title, answer, sources, followups}`.
+- `summarize` → lineage + ask + `notes` + gaps → header, returns `{title, answer, sources, followups}`.
 
 Nodes are `(state) => state`, no I/O. Model, search, DB, stream are adapters at the edge. Replay a state, same result. System prompt rebuilt every call — we persist completions only.
 
@@ -74,7 +74,7 @@ Off until configured.
 
 Request: pasted curl — method, URL, headers, body, `{{query}}`. Response: not typed, stringified into `compose`, capped ~20k, labeled untrusted. Only URLs present verbatim in the blob may be cited.
 
-# Envelope
+# Header
 Header, not tail. A tail can't be parsed while streaming.
 
 ```
@@ -112,7 +112,10 @@ CREATE INDEX nodes_by_hole ON nodes(hole_id, parent_id);
 # Stack
 Fullstack TS + React.
 
-- FE: React, Vite, Tailwind, shadcn/ui, `@xyflow/react`, TanStack Query. Mobile-first.
+- FE: React 19 + React Compiler, Vite, Tailwind, shadcn/ui, `@xyflow/react`, TanStack Query. Mobile-first.
 - BE: Hono on Node, LangGraph.js, `better-sqlite3`, SSE.
 - Shared `types` package for state, node, event shapes.
 - PWA day one: `vite-plugin-pwa`. Generation finishes while tab hidden → service worker Notification, tap focuses that node.
+
+# Deploy
+Docker Compose. nginx serves the web build on `:9994`, proxies `/api/` → `api:8787`. SQLite lives in named volume `db` at `/data/deepburrow.db`.
