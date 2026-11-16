@@ -1,4 +1,4 @@
-import type { Event, Meta, Source } from "./types.ts";
+import type { Event, Meta, Origin, Source } from "./types.ts";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
@@ -8,9 +8,13 @@ export function parseEvent(raw: unknown): Event {
     throw new Error("bad event");
   }
   const { type } = raw;
-  if (type === "node.pending" || type === "node.done") return raw as Event;
+  if (type === "node.pending") return raw as Event;
   if (type === "node.token" && typeof raw.text === "string") return raw as Event;
-  if (type === "node.error" && typeof raw.reason === "string") return raw as Event;
+  if (type === "node.progress" && typeof raw.line === "string") return raw as Event;
+  if (type === "node.done" || type === "node.error") {
+    if (!isObj(raw.node) || typeof raw.node.id !== "string") throw new Error(`bad ${type}`);
+    return raw as Event;
+  }
   if (type === "node.meta") {
     const { title, sources, followups } = raw;
     if (typeof title !== "string" || !Array.isArray(sources) || !Array.isArray(followups)) {
@@ -45,6 +49,10 @@ export const titleFromAsk = (ask: string) =>
   )
     .trim()
     .slice(0, 60);
+
+// One title rule for both sides of the wire: what the card shows is what gets saved.
+export const titleFromOrigin = (origin: Origin) =>
+  titleFromAsk(origin.question) || origin.preset?.label || "New branch";
 
 export function parseHeader(text: string): { meta: Meta; body: string } {
   const lines = text.split("\n");

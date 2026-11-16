@@ -61,12 +61,12 @@ Nodes are `(state) => state`, no I/O. Model, search, DB, stream are adapters at 
 # Loop rules
 Only `summarize` writes user-visible text; everything before is notes. Stop when any fires:
 
-1. No new URL this round
-2. `judge` says done
-3. 3 rounds
-4. Token budget
+1. `judge` says done
+2. 3 rounds
 
-Log per round `{suggestedQuestion, queries, newUrls, tokens, verdict}`. Tune from logs. 3 rounds ≈ 6 calls, so show suggested questions as progress lines in the pending card.
+"No new URL this round" arrives with search in M6. There is no token cap: a hard budget would cut an answer mid-thought, and the stop conditions already bound the work.
+
+Log per round `{suggestedQuestion, queries, newUrls, tokens, verdict}`. `tokens` is an output estimate (chars / 4), kept for tuning, never enforced. 3 rounds ≈ 6 calls, so show suggested questions as progress lines in the pending card — questions only, no round numbers in the UI.
 
 # Search
 Off until configured.
@@ -100,6 +100,7 @@ nodes(id TEXT PRIMARY KEY, burrow_id TEXT NOT NULL REFERENCES burrows(id) ON DEL
   title TEXT NOT NULL, markdown TEXT NOT NULL DEFAULT '',
   origin TEXT NOT NULL,                -- json: selected_text, question, preset{label,instruction}, anchor
   sources TEXT NOT NULL DEFAULT '[]', followups TEXT NOT NULL DEFAULT '[]',
+  progress TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'pending',
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 

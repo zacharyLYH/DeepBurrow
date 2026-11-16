@@ -9,6 +9,11 @@ const BURROW_ID = "demo";
 
 type AskSelection = { sourceId: string; text: string; left: number; top: number };
 
+// The popover is 320px wide (`w-80`); keep it inside the viewport with a gutter.
+const POPOVER_WIDTH = 320;
+const POPOVER_HEIGHT = 190;
+const VIEWPORT_GUTTER = 12;
+
 function Notice({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-dvh items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
@@ -26,8 +31,11 @@ export function App() {
     const text = selected?.toString().trim();
     if (!text || !selected?.rangeCount) return;
     const rect = selected.getRangeAt(0).getBoundingClientRect();
-    const left = Math.min(Math.max(12, rect.left), window.innerWidth - 332);
-    const top = Math.min(rect.bottom + 8, window.innerHeight - 190);
+    const left = Math.min(
+      Math.max(VIEWPORT_GUTTER, rect.left),
+      window.innerWidth - POPOVER_WIDTH - VIEWPORT_GUTTER,
+    );
+    const top = Math.min(rect.bottom + 8, window.innerHeight - POPOVER_HEIGHT);
     setSelection({ sourceId, text, left, top });
   };
 
@@ -47,11 +55,10 @@ export function App() {
     <div className="relative h-dvh w-full overflow-hidden">
       <Canvas
         nodes={burrow.nodes}
-        drafts={burrow.drafts}
+        progress={burrow.progress}
         onFollowUp={burrow.followUp}
         onRetry={burrow.retry}
         onStop={burrow.stop}
-        onChip={burrow.fillDraft}
         onSelect={captureSelection}
       />
       <div

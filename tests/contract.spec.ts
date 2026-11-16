@@ -46,6 +46,12 @@ test("schema applies and stores a fixture node", () => {
   };
   expect(row).toEqual({ title: node.title, status: "answered" });
   expect(db.prepare("SELECT count(*) AS n FROM nodes").get()).toEqual({ n: 1 });
+
+  // Progress is live-only; the table has no column to persist it.
+  const columns = (db.prepare("PRAGMA table_info(nodes)").all() as { name: string }[]).map(
+    (column) => column.name,
+  );
+  expect(columns).not.toContain("progress");
   db.close();
 });
 
@@ -71,5 +77,19 @@ test("header parses before body and never leaks", () => {
 test("bad events are rejected", () => {
   expect(() => parseEvent({ type: "node.nope", nodeId: "n" })).toThrow();
   expect(() => parseEvent({ type: "node.token", nodeId: "n" })).toThrow();
+  expect(() => parseEvent({ type: "node.progress", nodeId: "n" })).toThrow();
+  expect(() => parseEvent({ type: "node.done", nodeId: "n" })).toThrow();
+  expect(() => parseEvent({ type: "node.error", nodeId: "n" })).toThrow();
+  expect(parseEvent({ type: "node.progress", nodeId: "n", line: "Planning" })).toEqual({
+    type: "node.progress",
+    nodeId: "n",
+    line: "Planning",
+  });
+  const node = fixtureNodes[0];
+  expect(parseEvent({ type: "node.done", nodeId: node.id, node })).toEqual({
+    type: "node.done",
+    nodeId: node.id,
+    node,
+  });
   expect(() => parseEvent(null)).toThrow();
 });

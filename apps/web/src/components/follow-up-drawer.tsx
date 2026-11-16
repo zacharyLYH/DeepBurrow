@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { Node as BurrowNode, Preset } from "@deepburrow/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +18,8 @@ function autoGrow(textarea: HTMLTextAreaElement | null) {
 
 type FollowUpDrawerProps = {
   item: BurrowNode;
-  draft: string;
+  text: string;
+  onTextChange: (text: string) => void;
   open: boolean;
   card: RefObject<HTMLDivElement | null>;
   onOpenChange: (open: boolean) => void;
@@ -27,19 +28,15 @@ type FollowUpDrawerProps = {
 
 export function FollowUpDrawer({
   item,
-  draft,
+  text,
+  onTextChange,
   open,
   card,
   onOpenChange,
   onFollowUp,
 }: FollowUpDrawerProps) {
-  const [text, setText] = useState(draft);
   const input = useRef<HTMLTextAreaElement>(null);
   const handle = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (draft) setText(draft);
-  }, [draft]);
 
   useEffect(() => {
     autoGrow(input.current);
@@ -57,7 +54,7 @@ export function FollowUpDrawer({
   const submit = (preset?: Preset) => {
     if (!text.trim() && !preset) return;
     onFollowUp(item.id, preset, text);
-    setText("");
+    onTextChange("");
     onOpenChange(false);
   };
 
@@ -73,7 +70,7 @@ export function FollowUpDrawer({
             data-testid={`drawer-input-${item.id}`}
             rows={1}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => onTextChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.stopPropagation();

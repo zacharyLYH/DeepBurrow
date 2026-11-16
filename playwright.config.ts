@@ -12,7 +12,15 @@ export default defineConfig({
       url: "http://localhost:8787/health",
       reuseExistingServer: !process.env.CI,
       // FAKE_FAIL_ASK lets a spec force a real model failure once, then retry clean.
-      env: { DATA_DIR: "data/test", FAKE_PACE_MS: "30", FAKE_FAIL_ASK: "zzfail" },
+      // Two rounds so the loop and progress lines are real in the browser; the
+      // short latency keeps progress visible without slowing the suite.
+      env: {
+        DATA_DIR: "data/test",
+        FAKE_PACE_MS: "30",
+        FAKE_LATENCY_MS: "100",
+        FAKE_ROUNDS: "2",
+        FAKE_FAIL_ASK: "zzfail",
+      },
     },
     {
       command: "npm run dev -w @deepburrow/web -- --port 5173 --strictPort",

@@ -1,24 +1,36 @@
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
-import { titleFromAsk } from "../../../packages/types/src/header.ts";
-import type { Event, Meta, Node as BurrowNode, NodeStatus, Origin } from "../../../packages/types/src/types.ts";
-import { DEMO_BURROW, getBurrow, getNode, lineage, putNode } from "./db.ts";
-import { buildGraph, type GraphChunk } from "./graph.ts";
-import { fakeModel } from "./model.ts";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
+import { titleFromOrigin } from "../../../packages/types/src/header.ts";
+import type { Event, Node, Origin } from "../../../packages/types/src/types.ts";
+import { DEMO_BURROW, getBurrow, getNode, putNode } from "./db.ts";
+import { cancelRun, getRun, startRun, subscribe, type Run } from "./runs.ts";
 
-const graph = buildGraph(fakeModel);
+type AskBody = {
+  nodeId?: string;
+  parentId?: string | null;
+  ask?: string;
+  origin?: Origin;
+};
 
-// View-layer pacing so tokens land one at a time like a real stream.
-const TOKEN_PACE_MS = Number(process.env.FAKE_PACE_MS ?? 18);
+const settled = (node: Node): Event => ({
+  nodeId: node.id,
+  type: node.status === "answered" ? "node.done" : "node.error",
+  node,
+});
 
-type AskBody = { nodeId?: string; parentId?: string | null; ask?: string; origin?: Origin };
+function attach(stream: SSEStreamingApi, run: Run) {
+  const unsubscribe = subscribe(run, async (event) => {
+    await stream.writeSSE({ data: JSON.stringify(event) });
+  });
+  stream.onAbort(unsubscribe);
+}
 
-const nodeTitle = (origin: Origin) =>
-  titleFromAsk(origin.question) || origin.preset?.label || "New branch";
-
-const reasonOf = (error: unknown) => (error instanceof Error ? error.message : "Failed");
+async function finish(stream: SSEStreamingApi, nodeId: string) {
+  const node = getNode(nodeId);
+  if (node) await stream.writeSSE({ data: JSON.stringify(settled(node)) });
+}
 
 export const app = new Hono();
 
@@ -45,61 +57,64 @@ app.post("/ask", async (c) => {
   const burrowId = existing?.burrowId ?? parent?.burrowId ?? getBurrow(DEMO_BURROW)?.burrow.id;
   if (!burrowId) return c.json({ error: "burrow not found" }, 404);
 
-  const origin = body.origin ?? existing?.origin ?? { question: ask };
-  const now = Date.now();
-  const record: BurrowNode = {
+  // A new ask supplies the origin; a retry keeps the one already on the row.
+  const origin = existing ? existing.origin : (body.origin ?? { question: ask });
+
+  const node: Node = {
     id: existing?.id ?? randomUUID(),
     burrowId,
     parentId,
-    title: nodeTitle(origin),
+    title: titleFromOrigin(origin),
     markdown: "",
     origin,
     sources: [],
     followups: [],
     status: "pending",
     error: "",
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
+    createdAt: existing?.createdAt ?? Date.now(),
+    updatedAt: Date.now(),
   };
-  putNode(record);
+  putNode(node);
+
+  const run = startRun(node, ask);
+  return streamSSE(c, async (stream) => {
+    attach(stream, run);
+    await run.done;
+    await finish(stream, node.id);
+  });
+});
+
+// Reattach to a run after a refresh, or replay a row that already settled.
+app.get("/nodes/:id/stream", (c) => {
+  const nodeId = c.req.param("id");
+  const run = getRun(nodeId);
+
+  if (run) {
+    return streamSSE(c, async (stream) => {
+      attach(stream, run);
+      await run.done;
+      await finish(stream, nodeId);
+    });
+  }
+
+  const stored = getNode(nodeId);
+  if (!stored) return c.json({ error: "node not found" }, 404);
+
+  // No run means it died with an earlier process; settle the leftover row.
+  const node =
+    stored.status === "pending"
+      ? { ...stored, status: "stopped" as const, updatedAt: Date.now() }
+      : stored;
+  if (node !== stored) putNode(node);
 
   return streamSSE(c, async (stream) => {
-    const send = (event: Event) => stream.writeSSE({ data: JSON.stringify(event) });
-    let answer = "";
-    let meta: Meta = { title: record.title, sources: [], followups: [] };
-
-    const finish = (status: NodeStatus, error = "") =>
-      putNode({ ...record, ...meta, markdown: answer, status, error, updatedAt: Date.now() });
-
-    try {
-      await send({ nodeId: record.id, type: "node.pending" });
-      const events = await graph.stream(
-        { ask, lineage: parentId ? lineage(parentId) : "" },
-        { streamMode: "custom", signal: c.req.raw.signal },
-      );
-
-      for await (const chunk of events as AsyncIterable<GraphChunk>) {
-        if (stream.aborted) throw new Error("Client went away");
-        if (chunk.type === "meta") {
-          meta = { title: chunk.title, sources: chunk.sources, followups: chunk.followups };
-          await send({ nodeId: record.id, type: "node.meta", ...meta });
-          continue;
-        }
-        answer += chunk.text;
-        await send({ nodeId: record.id, type: "node.token", text: chunk.text });
-        await stream.sleep(TOKEN_PACE_MS);
-      }
-
-      await send({ nodeId: record.id, type: "node.done" });
-      finish("answered");
-    } catch (error) {
-      const stopped = stream.aborted || c.req.raw.signal.aborted;
-      finish(stopped ? "stopped" : "failed", stopped ? "" : reasonOf(error));
-      if (!stopped) {
-        await send({ nodeId: record.id, type: "node.error", reason: reasonOf(error) }).catch(() => {});
-      }
-    }
+    await stream.writeSSE({ data: JSON.stringify(settled(node)) });
   });
+});
+
+app.post("/nodes/:id/cancel", (c) => {
+  cancelRun(c.req.param("id"));
+  return c.json({ ok: true });
 });
 
 if (import.meta.url === `file://${process.argv[1]}`) {

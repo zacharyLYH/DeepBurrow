@@ -1,5 +1,5 @@
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Node as BurrowNode } from "@deepburrow/types";
 import {
   Background,
@@ -72,15 +72,12 @@ function CameraController({
 
 type CanvasProps = {
   nodes: BurrowNode[];
-  drafts: Record<string, string>;
-} & Omit<CardNodeData, "item" | "draft">;
+  progress: Record<string, string[]>;
+} & Omit<CardNodeData, "item" | "progress">;
 
-export function Canvas({ nodes, drafts, ...handlers }: CanvasProps) {
+export function Canvas({ nodes, progress, ...handlers }: CanvasProps) {
   const compact = useIsMobile();
-  // Layout only depends on tree shape, not on card contents, so keying the memo on
-  // the topology keeps token streams from re-running the whole layout each event.
-  const topology = nodes.map((item) => `${item.id}:${item.parentId ?? ""}`).join("|");
-  const positions = useMemo(() => layoutTree(nodes, compact), [topology, compact]);
+  const positions = layoutTree(nodes, compact);
   const last = nodes.at(-1);
 
   const flowNodes = nodes.map((item) => ({
@@ -89,7 +86,7 @@ export function Canvas({ nodes, drafts, ...handlers }: CanvasProps) {
     position: positions[item.id] ?? { x: 0, y: 0 },
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    data: { item, draft: drafts[item.id] ?? "", ...handlers },
+    data: { item, progress: progress[item.id] ?? [], ...handlers },
   }));
 
   const edges: Edge[] = nodes

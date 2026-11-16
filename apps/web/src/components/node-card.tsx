@@ -9,19 +9,17 @@ import { cn } from "@/lib/utils";
 
 export type CardNodeData = {
   item: BurrowNode;
-  draft: string;
+  progress: string[];
   onFollowUp: (id: string, preset?: Preset, text?: string) => void;
   onRetry: (id: string) => void;
   onStop: (id: string) => void;
-  onChip: (id: string, text: string) => void;
   onSelect: (id: string) => void;
 };
 
-export type CardFlowNode = FlowNode<CardNodeData, "card">;
+type CardFlowNode = FlowNode<CardNodeData, "card">;
 
 const STATUS_DOT: Record<NodeStatus, string> = {
   pending: "bg-amber-500",
-  streaming: "bg-sky-500",
   answered: "bg-emerald-500",
   stopped: "bg-zinc-400",
   failed: "bg-red-500",
@@ -57,7 +55,7 @@ function FollowUpChips({
 }: {
   id: string;
   chips: string[];
-  onChip: (id: string, text: string) => void;
+  onChip: (text: string) => void;
 }) {
   return (
     <div className="flex shrink-0 flex-wrap gap-1 px-4 pb-2">
@@ -68,7 +66,7 @@ function FollowUpChips({
           size="xs"
           variant="outline"
           className="font-normal"
-          onClick={() => onChip(id, chip)}
+          onClick={() => onChip(chip)}
         >
           {chip}
         </Button>
@@ -88,10 +86,13 @@ function FailedRow({ reason }: { reason: string }) {
 }
 
 export function NodeCard({ data }: NodeProps<CardFlowNode>) {
-  const { item, draft, onFollowUp, onRetry, onStop, onChip, onSelect } = data;
+  const { item, progress, onFollowUp, onRetry, onStop, onSelect } = data;
   const card = useRef<HTMLDivElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const canFollowUp = item.status === "answered" || item.status === "stopped";
+  const [draft, setDraft] = useState("");
+  const { status } = item;
+  const active = status === "pending";
+  const canFollowUp = status === "answered" || status === "stopped";
 
   useEffect(() => {
     if (!canFollowUp) setDrawerOpen(false);
@@ -101,7 +102,7 @@ export function NodeCard({ data }: NodeProps<CardFlowNode>) {
     <div
       ref={card}
       data-testid={`card-${item.id}`}
-      data-status={item.status}
+      data-status={status}
       className="db-card relative"
       style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
     >
@@ -109,12 +110,12 @@ export function NodeCard({ data }: NodeProps<CardFlowNode>) {
         <Handle type="target" position={Position.Top} isConnectable={false} className={hiddenHandle} />
 
         <div className="db-card-head">
-          <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[item.status])} />
+          <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[status])} />
           <h3 className="db-card-title" title={item.title}>
             {item.title}
           </h3>
           <div className="db-card-actions">
-            {item.status === "streaming" && (
+            {active && (
               <Button
                 data-testid={`stop-${item.id}`}
                 size="xs"
@@ -124,7 +125,7 @@ export function NodeCard({ data }: NodeProps<CardFlowNode>) {
                 Stop
               </Button>
             )}
-            {item.status === "failed" && (
+            {status === "failed" && (
               <Button
                 data-testid={`retry-${item.id}`}
                 size="xs"
@@ -138,24 +139,34 @@ export function NodeCard({ data }: NodeProps<CardFlowNode>) {
         </div>
 
         <CardContent className="nodrag nopan min-h-0 flex-1 select-text overflow-y-auto overscroll-contain px-4 py-3 [mask-image:linear-gradient(to_bottom,black_88%,transparent)]">
+          {status === "pending" && progress.length > 0 && (
+            <ol
+              data-testid={`progress-${item.id}`}
+              className="space-y-1 pb-2 text-xs text-muted-foreground"
+            >
+              {progress.map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ol>
+          )}
           <p className="text-sm whitespace-pre-wrap text-muted-foreground">{item.markdown}</p>
         </CardContent>
 
         {item.sources.length > 0 && <SourceLinks id={item.id} sources={item.sources} />}
-        {item.status === "answered" && item.followups.length > 0 && (
+        {status === "answered" && item.followups.length > 0 && (
           <FollowUpChips
             id={item.id}
             chips={item.followups}
-            onChip={(id, chip) => {
+            onChip={(chip) => {
+              setDraft(chip);
               setDrawerOpen(true);
-              onChip(id, chip);
             }}
           />
         )}
-        {item.status === "pending" && (
+        {status === "pending" && progress.length === 0 && !item.markdown && (
           <p className="shrink-0 px-4 pb-2 text-xs text-muted-foreground">Researching…</p>
         )}
-        {item.status === "failed" && <FailedRow reason={item.error} />}
+        {status === "failed" && <FailedRow reason={item.error} />}
 
         <Handle type="source" position={Position.Bottom} isConnectable={false} className={hiddenHandle} />
       </Card>
@@ -163,7 +174,8 @@ export function NodeCard({ data }: NodeProps<CardFlowNode>) {
       {canFollowUp && (
         <FollowUpDrawer
           item={item}
-          draft={draft}
+          text={draft}
+          onTextChange={setDraft}
           open={drawerOpen}
           card={card}
           onOpenChange={setDrawerOpen}

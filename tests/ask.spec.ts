@@ -34,14 +34,20 @@ const ask = async (page: Page, text: string) => {
 
 test.beforeEach(() => resetDemoBurrow());
 
-test("streams pending → streaming → answered, appending tokens", async ({ page }) => {
+test("meta lands early, tokens grow, and the header never leaks", async ({ page }) => {
   await open(page);
   const card = await ask(page, "What is additive increase?");
-
   await expect(card).toHaveAttribute("data-status", "pending");
-  await expect(card).toHaveAttribute("data-status", "streaming", { timeout: 5000 });
 
-  const body = card.locator('[data-slot="card-content"]');
+  await expect(card.locator('[data-testid^="sources-"]')).toBeVisible();
+  await expect(card.getByRole("heading", { level: 3 })).toHaveText("What is additive increase?");
+  const text = await card.innerText();
+  expect(text).not.toContain("TITLE:");
+  expect(text).not.toContain("SOURCES:");
+  expect(text).not.toContain("FOLLOWUPS:");
+
+  const body = card.locator('[data-slot="card-content"] p.whitespace-pre-wrap');
+  await expect(body).not.toHaveText("", { timeout: 5000 });
   const first = (await body.innerText()).trim();
   await page.waitForTimeout(150);
   const second = (await body.innerText()).trim();
@@ -52,20 +58,19 @@ test("streams pending → streaming → answered, appending tokens", async ({ pa
   await expect(card.getByText("RFC 5681")).toBeVisible();
 });
 
-test("title and sources land before the body finishes, header never leaks", async ({ page }) => {
+test("progress lines show work, never round numbers, then clear when text streams", async ({ page }) => {
   await open(page);
-  const card = await ask(page, "What is congestion avoidance?");
+  const card = await ask(page, "What is additive increase?");
+  const lines = card.locator('[data-testid^="progress-"]');
 
-  await expect(card.locator('[data-testid^="sources-"]')).toBeVisible();
-  await expect(card).toHaveAttribute("data-status", "streaming");
-  await expect(card.getByRole("heading", { level: 3 })).toHaveText("What is congestion avoidance?");
+  await expect(lines).toContainText("Planning the research");
+  await expect(lines).toContainText("Why double per RTT?");
+  // Second-round question: the plan seeds two, so this proves the loop advanced.
+  await expect(lines).toContainText("When does CUBIC win?", { timeout: 10000 });
+  await expect(lines).not.toContainText(/Round \d/);
 
-  const text = await card.innerText();
-  expect(text).not.toContain("TITLE:");
-  expect(text).not.toContain("SOURCES:");
-  expect(text).not.toContain("FOLLOWUPS:");
-
-  // Let the stream finish so its row lands before the next test resets the burrow.
+  // Tokens clear the progress list while the card is still pending.
+  await expect(lines).toHaveCount(0, { timeout: 15000 });
   await expect(card).toHaveAttribute("data-status", "answered", { timeout: 15000 });
 });
 
@@ -86,7 +91,12 @@ test("stop keeps partial text, hides retry, and survives reload", async ({ page 
   const title = `zzstop ${Date.now()}`;
   await open(page);
   const card = await ask(page, title);
-  await expect(card).toHaveAttribute("data-status", "streaming", { timeout: 5000 });
+  await expect(card).toHaveAttribute("data-status", "pending");
+  // Let a few tokens land so there is partial text to keep.
+  await expect(card.locator('[data-slot="card-content"] p.whitespace-pre-wrap')).not.toHaveText(
+    "",
+    { timeout: 5000 },
+  );
 
   await card.locator('[data-testid^="stop-"]').click();
   await expect(card).toHaveAttribute("data-status", "stopped");
@@ -99,6 +109,40 @@ test("stop keeps partial text, hides retry, and survives reload", async ({ page 
   const reloaded = page.locator('[data-testid^="card-"]').filter({ hasText: title }).first();
   await expect(reloaded).toHaveAttribute("data-status", "stopped", { timeout: 10000 });
   await expect(reloaded.locator('[data-slot="card-content"]')).toContainText(partial.slice(0, 24));
+});
+
+test("stop before any token settles stopped", async ({ page }) => {
+  await open(page);
+  const card = await ask(page, "What is additive increase?");
+  await expect(card).toHaveAttribute("data-status", "pending");
+
+  await card.locator('[data-testid^="stop-"]').click();
+  await expect(card).toHaveAttribute("data-status", "stopped");
+  await expect(card.locator('[data-slot="card-content"] p.whitespace-pre-wrap')).toHaveText("");
+});
+
+test("reloading during research reattaches and finishes", async ({ page }) => {
+  const title = `zzresume ${Date.now()}`;
+  await open(page);
+  const card = await ask(page, title);
+  await expect(card).toHaveAttribute("data-status", "pending");
+
+  const streams: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/nodes/") && request.url().includes("/stream")) {
+      streams.push(request.url());
+    }
+  });
+
+  // The run keeps going server-side; the new page reattaches to it.
+  await page.reload();
+  const reloaded = page.locator('[data-testid^="card-"]').filter({ hasText: title }).first();
+  await expect(reloaded).toHaveAttribute("data-status", /pending|answered/, { timeout: 5000 });
+  await expect(reloaded).toHaveAttribute("data-status", "answered", { timeout: 15000 });
+  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 1);
+
+  // Reattach is a GET on the node, never a second /ask.
+  expect(streams).toHaveLength(1);
 });
 
 test("load failure offers retry", async ({ page }) => {
@@ -118,17 +162,35 @@ test("load failure offers retry", async ({ page }) => {
   await expect(page.locator(".react-flow__node")).toHaveCount(baseCount);
 });
 
-test("follow-up chip fills the drawer without submitting", async ({ page }) => {
+test("a follow-up chip fills the drawer, then submits a child", async ({ page }) => {
   await open(page);
-  const card = await ask(page, "Why does slow start double?");
-  await expect(card).toHaveAttribute("data-status", "answered", { timeout: 10000 });
+  const parent = await ask(page, "Why does slow start double?");
+  await expect(parent).toHaveAttribute("data-status", "answered", { timeout: 10000 });
+  const parentId = (await parent.getAttribute("data-testid"))!.replace("card-", "");
 
-  const chip = card.locator('[data-testid^="chip-"]').first();
+  const chip = parent.locator('[data-testid^="chip-"]').first();
   const label = (await chip.innerText()).trim();
   await chip.click();
 
-  await expect(card.locator('[data-testid^="drawer-input-"]')).toHaveValue(label);
+  const input = parent.locator('[data-testid^="drawer-input-"]');
+  await expect(input).toHaveValue(label);
   await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 1);
+
+  await input.press("Enter");
+
+  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 2);
+  const child = page.locator('[data-testid^="card-"]').last();
+  await expect(child).toHaveAttribute("data-status", "answered", { timeout: 10000 });
+  const childId = (await child.getAttribute("data-testid"))!.replace("card-", "");
+  expect(childId).not.toBe(parentId);
+  await expect(input).toHaveValue("");
+
+  const { nodes } = (await (await page.request.get("/api/burrows/demo")).json()) as {
+    nodes: { id: string; parentId: string | null; origin: { question: string } }[];
+  };
+  const created = nodes.find((node) => node.id === childId);
+  expect(created?.parentId).toBe(parentId);
+  expect(created?.origin.question).toBe(label);
 });
 
 test("follow-up drawer sits below the card, body stays readable", async ({ page }) => {
@@ -185,18 +247,27 @@ test("stable answered card", async ({ page }) => {
   });
 });
 
-test("reload keeps answered cards", async ({ page }) => {
+test("reload keeps answered cards and does not reattach", async ({ page }) => {
   await open(page);
   const card = await ask(page, "What is congestion avoidance?");
   await expect(card).toHaveAttribute("data-status", "answered", { timeout: 15000 });
 
-  await page.reload();
+  const streams: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/nodes/") && request.url().includes("/stream")) {
+      streams.push(request.url());
+    }
+  });
 
+  await page.reload();
   await expect(page.getByTestId("burrow-title")).toHaveText(fixtureBurrow.title);
   await expect(
     page.getByRole("heading", { name: "What is congestion avoidance?" }).first(),
   ).toBeVisible();
   expect(await page.locator(".react-flow__node").count()).toBe(baseCount + 1);
+
+  await page.waitForTimeout(300);
+  expect(streams).toEqual([]);
 });
 
 const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];

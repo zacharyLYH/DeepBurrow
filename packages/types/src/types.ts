@@ -1,4 +1,4 @@
-export type NodeStatus = "pending" | "streaming" | "answered" | "stopped" | "failed";
+export type NodeStatus = "pending" | "answered" | "stopped" | "failed";
 
 export type Source = { title: string; url: string };
 
@@ -39,7 +39,8 @@ export type Meta = { title: string; sources: Source[]; followups: string[] };
 export type Event = { nodeId: string } & (
   | { type: "node.pending" }
   | ({ type: "node.meta" } & Meta)
+  | { type: "node.progress"; line: string }
   | { type: "node.token"; text: string }
-  | { type: "node.done" }
-  | { type: "node.error"; reason: string }
+  | { type: "node.done"; node: Node }
+  | { type: "node.error"; node: Node }
 );

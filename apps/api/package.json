@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "api": "node src/server.ts"
+    "api": "node src/server.ts",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.8",
