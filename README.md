@@ -41,18 +41,18 @@ Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, 
 LangGraph. State machine, testable as data.
 
 ```ts
-type State = { burrowId; nodeId; lineage; ask: string; gaps: string[]; round: number; queries: string[]; searchRaw: string; notes: string; answer; title; sources; followups; error };
+type State = { burrowId; nodeId; lineage; ask: string; suggestedQuestions: string[]; round: number; queries: string[]; searchRaw: string; notes: string; answer; title; sources; followups; error };
 ```
 
 ```
-plan → (gaps? search → compose → judge → gaps?) → summarize → END
+plan → (suggested questions? search → compose → judge → suggested questions?) → summarize → END
 ```
 
-- `plan` → `gaps`. Trigger-happy: weak reason to research is enough. URL in ask = one gap, verbatim. No search config → no gaps.
-- `search` → one call per round, queries from top gap, `searchRaw` = stringified response. Failure → `""`.
+- `plan` → `suggestedQuestions`. Trigger-happy: weak reason to research is enough. URL in ask = one suggested question, verbatim. No search config → no suggested questions.
+- `search` → one call per round, queries from top suggested question, `searchRaw` = stringified response. Failure → `""`.
 - `compose` → notes from lineage + ask + `searchRaw`, appended to `notes`. No header.
-- `judge` → resolves/adds gaps, sets `done`. Small JSON.
-- `summarize` → lineage + ask + `notes` + gaps → header, returns `{title, answer, sources, followups}`.
+- `judge` → resolves/adds suggested questions, sets `done`. Small JSON.
+- `summarize` → lineage + ask + `notes` + suggested questions → header, returns `{title, answer, sources, followups}`.
 
 Nodes are `(state) => state`, no I/O. Model, search, DB, stream are adapters at the edge. Replay a state, same result. System prompt rebuilt every call — we persist completions only.
 
@@ -66,7 +66,7 @@ Only `summarize` writes user-visible text; everything before is notes. Stop when
 3. 3 rounds
 4. Token budget
 
-Log per round `{gap, queries, newUrls, tokens, verdict}`. Tune from logs. 3 rounds ≈ 6 calls, so show gaps as progress lines in the pending card.
+Log per round `{suggestedQuestion, queries, newUrls, tokens, verdict}`. Tune from logs. 3 rounds ≈ 6 calls, so show suggested questions as progress lines in the pending card.
 
 # Search
 Off until configured.
@@ -82,10 +82,10 @@ SOURCES: Nagle — https://x | RFC 5681 — https://y
 FOLLOWUPS: Why does slow start double per RTT? | When does CUBIC beat Reno?
 ```
 
-Parsed before the first body token, stripped, body streams untouched. Sources = what the model used, subset, each checked against the blob. Followups = leftover gaps or loose ends, 2–3.
+Parsed before the first body token, stripped, body streams untouched. Sources = what the model used, subset, each checked against the blob. Followups = leftover suggested questions or loose ends, 2–3.
 
 # Data
-SQLite, raw SQL on `better-sqlite3`, no ORM. Lineage = recursive CTE up `parent_id`.
+SQLite via `node:sqlite` (`DatabaseSync`), raw SQL, no ORM. Lineage = recursive CTE up `parent_id`.
 
 ```sql
 users(id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL,
@@ -112,7 +112,7 @@ CREATE INDEX nodes_by_burrow ON nodes(burrow_id, parent_id);
 Fullstack TS + React.
 
 - FE: React 19 + React Compiler, Vite, Tailwind, shadcn/ui, `@xyflow/react`, TanStack Query. Mobile-first.
-- BE: Hono on Node, LangGraph.js, `better-sqlite3`, SSE.
+- BE: Hono on Node, LangGraph.js, `node:sqlite`, SSE.
 - Shared `types` package for state, node, event shapes.
 - PWA day one: `vite-plugin-pwa`. Generation finishes while tab hidden → service worker Notification, tap focuses that node.
 

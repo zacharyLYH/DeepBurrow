@@ -14,24 +14,8 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-header"
-      className={cn("flex flex-col gap-1 px-4", className)}
-      {...props}
-    />
-  );
-}
-
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="card-title" className={cn("font-medium", className)} {...props} />
-  );
-}
-
 function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="card-content" className={cn("px-4", className)} {...props} />;
 }
 
-export { Card, CardContent, CardHeader, CardTitle };
+export { Card, CardContent };

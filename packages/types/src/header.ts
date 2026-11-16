@@ -35,6 +35,17 @@ export const parseSources = (value: string): Source[] =>
     return { title: title.trim(), url: url.trim() };
   });
 
+// Last ask segment that is not preset or selection boilerplate, cut for a card title.
+export const titleFromAsk = (ask: string) =>
+  (
+    ask
+      .split("\n\n")
+      .filter((part) => !part.startsWith("Selected text: "))
+      .at(-1) ?? ""
+  )
+    .trim()
+    .slice(0, 60);
+
 export function parseHeader(text: string): { meta: Meta; body: string } {
   const lines = text.split("\n");
   const meta: Meta = { title: "", sources: [], followups: [] };

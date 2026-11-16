@@ -1,11 +1,8 @@
 import { readFileSync } from "node:fs";
-import { type AddressInfo } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
-import { createMockServer } from "../apps/api/src/mock-sse.ts";
 import { parseHeader, parseEvent } from "../packages/types/src/header.ts";
 import { fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
-import type { Event } from "../packages/types/src/types.ts";
 
 const schema = readFileSync(new URL("../db/migrations/001_init.sql", import.meta.url), "utf8");
 
@@ -50,51 +47,6 @@ test("schema applies and stores a fixture node", () => {
   expect(row).toEqual({ title: node.title, status: "answered" });
   expect(db.prepare("SELECT count(*) AS n FROM nodes").get()).toEqual({ n: 1 });
   db.close();
-});
-
-test("mock server serves the fixture burrow and a well-formed stream", async () => {
-  const server = createMockServer();
-  await new Promise<void>((resolve) => server.listen(0, resolve));
-  const { port } = server.address() as AddressInfo;
-  const base = `http://localhost:${port}`;
-
-  try {
-    expect(await (await fetch(`${base}/burrow`)).json()).toEqual(fixtureBurrow);
-
-    const stream = await (
-      await fetch(`${base}/ask`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ask: "Why double per RTT?" }),
-      })
-    ).text();
-    const events = stream
-      .split("\n\n")
-      .filter(Boolean)
-      .map((chunk) => parseEvent(JSON.parse(chunk.replace(/^data: /, ""))) as Event);
-
-    expect(events[0].type).toBe("node.pending");
-    expect(events.at(-1)?.type).toBe("node.done");
-    const nodeId = events[0].nodeId;
-    expect(nodeId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(events.every((event) => event.nodeId === nodeId)).toBe(true);
-
-    const retry = await (
-      await fetch(`${base}/ask`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ nodeId, ask: "Why double per RTT?" }),
-      })
-    ).text();
-    expect(retry).toContain(`"nodeId":"${nodeId}"`);
-
-    const meta = events.find((event) => event.type === "node.meta");
-    if (meta?.type !== "node.meta") throw new Error("no meta event");
-    expect(meta.title).toBe("Why double per RTT?");
-    expect(meta.sources.length).toBeGreaterThan(0);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
 });
 
 test("header parses before body and never leaks", () => {

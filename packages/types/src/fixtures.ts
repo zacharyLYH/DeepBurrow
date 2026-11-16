@@ -1,4 +1,4 @@
-import type { Event, Burrow, Node } from "./types.ts";
+import type { Burrow, Node } from "./types.ts";
 
 const T = 1_760_000_000_000;
 
@@ -73,16 +73,3 @@ export const fixtureNodes: Node[] = [
   },
 ];
 
-export const fixtureEvents: Event[] = [
-  { nodeId: "node_root", type: "node.pending" },
-  {
-    nodeId: "node_root",
-    type: "node.meta",
-    title: "TCP congestion control",
-    sources: [{ title: "RFC 5681", url: "https://www.rfc-editor.org/rfc/rfc5681" }],
-    followups: ["Why double per RTT in slow start?"],
-  },
-  { nodeId: "node_root", type: "node.token", text: "TCP avoids collapse " },
-  { nodeId: "node_root", type: "node.token", text: "by probing for available bandwidth." },
-  { nodeId: "node_root", type: "node.done" },
-];

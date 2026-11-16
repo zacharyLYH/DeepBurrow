@@ -77,13 +77,18 @@ type CanvasProps = {
 
 export function Canvas({ nodes, drafts, ...handlers }: CanvasProps) {
   const compact = useIsMobile();
-  const positions = useMemo(() => layoutTree(nodes, compact), [nodes, compact]);
+  // Layout only depends on tree shape, not on card contents, so keying the memo on
+  // the topology keeps token streams from re-running the whole layout each event.
+  const topology = nodes.map((item) => `${item.id}:${item.parentId ?? ""}`).join("|");
+  const positions = useMemo(() => layoutTree(nodes, compact), [topology, compact]);
   const last = nodes.at(-1);
 
   const flowNodes = nodes.map((item) => ({
     id: item.id,
     type: "card",
     position: positions[item.id] ?? { x: 0, y: 0 },
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
     data: { item, draft: drafts[item.id] ?? "", ...handlers },
   }));
 

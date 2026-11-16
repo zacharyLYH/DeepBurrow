@@ -34,23 +34,6 @@ export type Node = {
   updatedAt: number;
 };
 
-export type State = {
-  burrowId: string;
-  nodeId: string;
-  lineage: string;
-  ask: string;
-  gaps: string[];
-  round: number;
-  queries: string[];
-  searchRaw: string;
-  notes: string;
-  answer: string;
-  title: string;
-  sources: Source[];
-  followups: string[];
-  error: string | null;
-};
-
 export type Meta = { title: string; sources: Source[]; followups: string[] };
 
 export type Event = { nodeId: string } & (

@@ -3,6 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "mock": "node src/mock-sse.ts"
+    "api": "node src/server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.8",
+    "@langchain/core": "^1.4.1",
+    "@langchain/langgraph": "^1.7.4",
+    "hono": "^4.13.18"
   }
 }

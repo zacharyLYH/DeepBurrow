@@ -1,5 +1,6 @@
 import { devices, expect, test, type Page } from "@playwright/test";
 import { fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { resetDemoBurrow } from "./db.ts";
 
 const viewportTransform = (page: Page) =>
   page
@@ -13,6 +14,7 @@ const viewportState = (page: Page) =>
   });
 
 test.beforeEach(async ({ page }) => {
+  resetDemoBurrow();
   await page.goto("/");
   await expect(page.locator(".react-flow__node")).toHaveCount(fixtureNodes.length);
   await page.waitForTimeout(300);

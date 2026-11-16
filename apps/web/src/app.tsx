@@ -1,13 +1,24 @@
-import { useState } from "react";
-import { fixtureBurrow, fixtureNodes } from "@deepburrow/types";
+import { useState, type ReactNode } from "react";
 import { AskPopover } from "@/components/ask-popover";
 import { Canvas } from "@/components/canvas";
+import { Button } from "@/components/ui/button";
 import { useBurrow } from "@/lib/use-burrow";
+
+// Single demo burrow until auth lands in M7.
+const BURROW_ID = "demo";
 
 type AskSelection = { sourceId: string; text: string; left: number; top: number };
 
+function Notice({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-dvh items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
 export function App() {
-  const burrow = useBurrow(fixtureNodes);
+  const burrow = useBurrow(BURROW_ID);
   const [selection, setSelection] = useState<AskSelection | null>(null);
 
   const captureSelection = (sourceId: string) => {
@@ -19,6 +30,18 @@ export function App() {
     const top = Math.min(rect.bottom + 8, window.innerHeight - 190);
     setSelection({ sourceId, text, left, top });
   };
+
+  if (burrow.loading) return <Notice>Loading burrow…</Notice>;
+  if (burrow.loadError) {
+    return (
+      <Notice>
+        Couldn&apos;t load the burrow.
+        <Button size="sm" variant="outline" onClick={burrow.reload}>
+          Retry
+        </Button>
+      </Notice>
+    );
+  }
 
   return (
     <div className="relative h-dvh w-full overflow-hidden">
@@ -35,7 +58,7 @@ export function App() {
         data-testid="burrow-title"
         className="pointer-events-none absolute left-4 top-3 z-10 hidden text-sm text-muted-foreground sm:block"
       >
-        {fixtureBurrow.title}
+        {burrow.title}
       </div>
       {selection && (
         <AskPopover

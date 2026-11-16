@@ -9,9 +9,9 @@
   "scripts": {
     "dev": "npm run dev -w @deepburrow/web",
     "build": "npm run build -w @deepburrow/web",
-    "mock": "npm run mock -w @deepburrow/api",
     "lint": "tsc --noEmit",
-    "test": "playwright test"
+    "test": "playwright test",
+    "api": "npm run api -w @deepburrow/api"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

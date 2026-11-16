@@ -28,7 +28,7 @@ Contract = shared types + DB schema + event list. Both build to it, neither bloc
 | M1 | FE canvas: xyflow plane, tree layout, cards, edges | Playwright: pan, zoom, long body scrolls, layout no overlap |
 | M2 | FE asking + light dark mode toggle + streaming: popover, pills, pending→streaming→answered, header strip, retry | Playwright vs mock SSE: 4 states; title, sources, chips appear |
 | M3 | BE core + FE cutover: repo, `plan/compose/summarize`, fake model, SSE. FE hooks real burrow/node/ask endpoints, retry, errors. No search | Unit: nodes pure + replay. Playwright vs real BE: ask → stream → answered, reload persists, retry works; app no longer uses mock SSE |
-| M4 | Loop: `judge`, gap tracking, caps. FE renders gap progress + stop states | Scripted fake model forces 3 rounds and each stop condition; assert call counts. FE gap lines advance, no stuck cards |
+| M4 | Loop: `judge`, suggested questions, caps. FE renders suggested question progress + stop states | Scripted fake model forces 3 rounds and each stop condition; assert call counts. FE suggested question lines advance, no stuck cards |
 | M5 | Parity pass vs `~/Desktop/rabbithole`: side-by-side flows, UI, endpoints; fix deltas | Parity checklist green; remaining deltas logged |
 | M6 | Search: curl executor, 20k cap, untrusted label, verbatim-URL filter | Fixture search server: one call per round, junk URLs dropped, failure → empty and still answers |
 | M7 | Auth + BYOK: email login, encrypted creds, provider verify. FE login + setup screens | Signup → key encrypted at rest → verify passes/fails vs fake provider |

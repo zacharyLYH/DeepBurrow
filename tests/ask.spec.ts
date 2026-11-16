@@ -1,11 +1,11 @@
 import { devices, expect, test, type Page } from "@playwright/test";
-import { fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { resetDemoBurrow } from "./db.ts";
 
 const rootId = fixtureNodes[0].id;
 const baseCount = fixtureNodes.length;
 
-const open = async (page: Page, scenario?: string) => {
-  if (scenario) await page.setExtraHTTPHeaders({ "x-mock-scenario": scenario });
+const open = async (page: Page) => {
   await page.goto("/");
   await expect(page.locator(".react-flow__node")).toHaveCount(baseCount);
   await page.waitForTimeout(200);
@@ -32,30 +32,28 @@ const ask = async (page: Page, text: string) => {
   return page.getByTestId(id);
 };
 
-test("reaches pending, streaming, answered", async ({ page }) => {
-  await open(page, "slow");
+test.beforeEach(() => resetDemoBurrow());
+
+test("streams pending → streaming → answered, appending tokens", async ({ page }) => {
+  await open(page);
   const card = await ask(page, "What is additive increase?");
 
   await expect(card).toHaveAttribute("data-status", "pending");
   await expect(card).toHaveAttribute("data-status", "streaming", { timeout: 5000 });
+
+  const body = card.locator('[data-slot="card-content"]');
+  const first = (await body.innerText()).trim();
+  await page.waitForTimeout(150);
+  const second = (await body.innerText()).trim();
+  expect(first.length).toBeGreaterThan(0);
+  expect(second.length).toBeGreaterThan(first.length);
+
   await expect(card).toHaveAttribute("data-status", "answered", { timeout: 15000 });
   await expect(card.getByText("RFC 5681")).toBeVisible();
 });
 
-test("failed card shows reason and retry recovers same node", async ({ page }) => {
-  await open(page, "fail");
-  const card = await ask(page, "Does this fail?");
-
-  await expect(card).toHaveAttribute("data-status", "failed", { timeout: 5000 });
-  await expect(card.getByText("Failed: Model timed out")).toBeVisible();
-
-  await card.locator('[data-testid^="retry-"]').click();
-  await expect(card).toHaveAttribute("data-status", "answered", { timeout: 5000 });
-  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 1);
-});
-
-test("title and sources land before stream ends, header never leaks", async ({ page }) => {
-  await open(page, "slow");
+test("title and sources land before the body finishes, header never leaks", async ({ page }) => {
+  await open(page);
   const card = await ask(page, "What is congestion avoidance?");
 
   await expect(card.locator('[data-testid^="sources-"]')).toBeVisible();
@@ -66,6 +64,58 @@ test("title and sources land before stream ends, header never leaks", async ({ p
   expect(text).not.toContain("TITLE:");
   expect(text).not.toContain("SOURCES:");
   expect(text).not.toContain("FOLLOWUPS:");
+
+  // Let the stream finish so its row lands before the next test resets the burrow.
+  await expect(card).toHaveAttribute("data-status", "answered", { timeout: 15000 });
+});
+
+test("failed card shows reason and retry recovers same node", async ({ page }) => {
+  await open(page);
+  // The fake model fails the first summarize for an ask carrying this marker, so
+  // the server's real error path runs, then recovers on retry.
+  const card = await ask(page, "Does zzfail break?");
+  await expect(card).toHaveAttribute("data-status", "failed", { timeout: 5000 });
+  await expect(card.getByText("Failed: Model timed out")).toBeVisible();
+
+  await card.locator('[data-testid^="retry-"]').click();
+  await expect(card).toHaveAttribute("data-status", "answered", { timeout: 5000 });
+  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 1);
+});
+
+test("stop keeps partial text, hides retry, and survives reload", async ({ page }) => {
+  const title = `zzstop ${Date.now()}`;
+  await open(page);
+  const card = await ask(page, title);
+  await expect(card).toHaveAttribute("data-status", "streaming", { timeout: 5000 });
+
+  await card.locator('[data-testid^="stop-"]').click();
+  await expect(card).toHaveAttribute("data-status", "stopped");
+  const partial = (await card.locator('[data-slot="card-content"]').innerText()).trim();
+  expect(partial.length).toBeGreaterThan(0);
+  await expect(card.locator('[data-testid^="retry-"]')).toHaveCount(0);
+  await expect(await openDrawer(page, card)).toBeVisible();
+
+  await page.reload();
+  const reloaded = page.locator('[data-testid^="card-"]').filter({ hasText: title }).first();
+  await expect(reloaded).toHaveAttribute("data-status", "stopped", { timeout: 10000 });
+  await expect(reloaded.locator('[data-slot="card-content"]')).toContainText(partial.slice(0, 24));
+});
+
+test("load failure offers retry", async ({ page }) => {
+  let failing = true;
+  await page.route("**/api/burrows/demo", (route) =>
+    failing
+      ? route.fulfill({ status: 500, body: "boom" })
+      : route.fulfill({ json: { burrow: fixtureBurrow, nodes: fixtureNodes } }),
+  );
+  await page.goto("/");
+
+  await expect(page.getByText("Couldn't load the burrow.")).toBeVisible();
+  await expect(page).toHaveScreenshot("load-error.png", { maxDiffPixelRatio: 0.01 });
+
+  failing = false;
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount);
 });
 
 test("follow-up chip fills the drawer without submitting", async ({ page }) => {
@@ -79,18 +129,6 @@ test("follow-up chip fills the drawer without submitting", async ({ page }) => {
 
   await expect(card.locator('[data-testid^="drawer-input-"]')).toHaveValue(label);
   await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 1);
-});
-
-test("stop keeps partial text and hides retry", async ({ page }) => {
-  await open(page, "slow");
-  const card = await ask(page, "Explain the congestion window");
-  await expect(card).toHaveAttribute("data-status", "streaming", { timeout: 5000 });
-
-  await card.locator('[data-testid^="stop-"]').click();
-  await expect(card).toHaveAttribute("data-status", "stopped");
-  await expect(card.locator('[data-slot="card-content"]')).toContainText(/\w/);
-  await expect(card.locator('[data-testid^="retry-"]')).toHaveCount(0);
-  await expect(await openDrawer(page, card)).toBeVisible();
 });
 
 test("follow-up drawer sits below the card, body stays readable", async ({ page }) => {
@@ -145,6 +183,20 @@ test("stable answered card", async ({ page }) => {
   await expect(page.getByTestId("canvas")).toHaveScreenshot("answered-card.png", {
     maxDiffPixelRatio: 0.01,
   });
+});
+
+test("reload keeps answered cards", async ({ page }) => {
+  await open(page);
+  const card = await ask(page, "What is congestion avoidance?");
+  await expect(card).toHaveAttribute("data-status", "answered", { timeout: 15000 });
+
+  await page.reload();
+
+  await expect(page.getByTestId("burrow-title")).toHaveText(fixtureBurrow.title);
+  await expect(
+    page.getByRole("heading", { name: "What is congestion avoidance?" }).first(),
+  ).toBeVisible();
+  expect(await page.locator(".react-flow__node").count()).toBe(baseCount + 1);
 });
 
 const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];

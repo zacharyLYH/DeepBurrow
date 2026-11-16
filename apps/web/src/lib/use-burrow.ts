@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import type { Event, Node as BurrowNode, Origin, Preset } from "@deepburrow/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  titleFromAsk,
+  type Burrow,
+  type Event,
+  type Node as BurrowNode,
+  type Origin,
+  type Preset,
+} from "@deepburrow/types";
 import { buildAsk } from "./ask";
 import { streamAsk } from "./stream";
 
@@ -11,12 +18,35 @@ type AskArgs = {
 };
 
 const titleOf = (origin: Origin) =>
-  origin.question.slice(0, 60) || origin.preset?.label || "New branch";
+  titleFromAsk(origin.question) || origin.preset?.label || "New branch";
 
-export function useBurrow(initialNodes: BurrowNode[]) {
-  const [nodes, setNodes] = useState(initialNodes);
+export function useBurrow(burrowId: string) {
+  const [nodes, setNodes] = useState<BurrowNode[]>([]);
+  const [title, setTitle] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const controllers = useRef(new Map<string, AbortController>());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const response = await fetch(`/api/burrows/${burrowId}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as { burrow: Burrow; nodes: BurrowNode[] };
+      setTitle(data.burrow.title);
+      setNodes(data.nodes);
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [burrowId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     const active = controllers.current;
@@ -28,7 +58,7 @@ export function useBurrow(initialNodes: BurrowNode[]) {
 
   const createNode = (id: string, args: AskArgs, origin: Origin): BurrowNode => ({
     id,
-    burrowId: initialNodes[0]?.burrowId ?? "",
+    burrowId: nodes[0]?.burrowId ?? "",
     parentId: args.parentId,
     title: titleOf(origin),
     markdown: "",
@@ -159,5 +189,5 @@ export function useBurrow(initialNodes: BurrowNode[]) {
   const fillDraft = (id: string, text: string) =>
     setDrafts((current) => ({ ...current, [id]: text }));
 
-  return { nodes, drafts, ask, followUp, retry, stop, fillDraft };
+  return { title, nodes, drafts, loading, loadError, reload: load, ask, followUp, retry, stop, fillDraft };
 }

@@ -1,4 +1,4 @@
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   created_at INTEGER NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE users (
   search TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE TABLE burrows (
+CREATE TABLE IF NOT EXISTS burrows (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE burrows (
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE nodes (
+CREATE TABLE IF NOT EXISTS nodes (
   id TEXT PRIMARY KEY,
   burrow_id TEXT NOT NULL REFERENCES burrows(id) ON DELETE CASCADE,
   parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
@@ -32,4 +32,4 @@ CREATE TABLE nodes (
   updated_at INTEGER NOT NULL
 );
 
-CREATE INDEX nodes_by_burrow ON nodes(burrow_id, parent_id);
+CREATE INDEX IF NOT EXISTS nodes_by_burrow ON nodes(burrow_id, parent_id);
