@@ -2,28 +2,37 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import type { Node as BurrowNode } from "../packages/types/src/types.ts";
+import { demoCookie } from "./api-auth.ts";
+import { seedDemo } from "./seed.ts";
 
 // The M5 graph additions, exercised through the real Hono app.
 let app: typeof import("../apps/api/src/server.ts")["app"];
+let cookie = "";
 
 test.beforeAll(async () => {
-  process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "deepburrow-nodes-"));
+  const dataDir = mkdtempSync(join(tmpdir(), "deepburrow-nodes-"));
+  process.env.DATA_DIR = dataDir;
+  seedDemo(dataDir);
   ({ app } = await import("../apps/api/src/server.ts"));
+  cookie = await demoCookie(app);
 });
 
 const call = (path: string, method = "GET", body?: unknown) =>
   app.fetch(
     new Request(`http://api${path}`, {
       method,
-      ...(body === undefined
-        ? {}
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      headers: {
+        cookie,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
   );
 
 const nodes = async () =>
-  ((await (await call("/burrows/demo")).json()) as { nodes: BurrowNode[] }).nodes;
+  ((await (await call(`/burrows/${fixtureBurrow.id}`)).json()) as { nodes: BurrowNode[] }).nodes;
 
 test("rename trims, rejects blanks and persists", async () => {
   const response = await call("/nodes/node_why", "PATCH", { title: "  Why it doubles  " });

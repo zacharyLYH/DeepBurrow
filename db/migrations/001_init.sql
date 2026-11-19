@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   base_url TEXT,
   model TEXT,
@@ -39,3 +40,26 @@ CREATE TABLE IF NOT EXISTS nodes (
 
 CREATE INDEX IF NOT EXISTS nodes_by_burrow ON nodes(burrow_id, parent_id);
 CREATE INDEX IF NOT EXISTS nodes_by_delete ON nodes(deleted_at);
+
+CREATE INDEX IF NOT EXISTS burrows_by_user ON burrows(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  revoked_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS sessions_by_user ON auth_sessions(user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES auth_sessions(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS refresh_tokens_by_session ON refresh_tokens(session_id, expires_at);

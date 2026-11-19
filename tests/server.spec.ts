@@ -3,32 +3,40 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { parseEvent } from "../packages/types/src/header.ts";
+import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import type { Event, Node as BurrowNode } from "../packages/types/src/types.ts";
+import { demoCookie } from "./api-auth.ts";
+import { seedDemo } from "./seed.ts";
+import { parseEvents } from "./stream.ts";
 
 let app: typeof import("../apps/api/src/server.ts")["app"];
+let cookie = "";
 
 test.beforeAll(async () => {
-  process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "deepburrow-"));
+  const dataDir = mkdtempSync(join(tmpdir(), "deepburrow-"));
+  process.env.DATA_DIR = dataDir;
+  seedDemo(dataDir);
   ({ app } = await import("../apps/api/src/server.ts"));
+  cookie = await demoCookie(app);
 });
 
-const post = (path: string, body: unknown) =>
+const call = (path: string, init: RequestInit = {}) =>
   app.fetch(
     new Request(`http://api${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      ...init,
+      headers: { cookie, ...(init.headers as Record<string, string> | undefined) },
     }),
   );
 
-const parseStream = (text: string) =>
-  text
-    .split("\n\n")
-    .filter(Boolean)
-    .map((chunk) => parseEvent(JSON.parse(chunk.replace(/^data: /, ""))) as Event);
+const post = (path: string, body: unknown) =>
+  call(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
 const burrowNodes = async () =>
-  ((await (await app.fetch(new Request("http://api/burrows/demo"))).json()) as {
+  ((await (await call(`/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: BurrowNode[];
   }).nodes;
 
@@ -45,7 +53,7 @@ const startAsk = async (ask: string) => {
 };
 
 const stream = (nodeId: string) =>
-  app.fetch(new Request(`http://api/nodes/${nodeId}/stream`));
+  call(`/nodes/${nodeId}/stream`);
 
 // Reads the SSE body one event at a time, so the caller can observe the server
 // mid-run. Hono's writer backpressures, so the run cannot race ahead unseen.
@@ -72,7 +80,7 @@ test("real server streams ordered events and persists the answer", async () => {
   });
   expect(response.headers.get("content-type")).toContain("text/event-stream");
 
-  const events = parseStream(await response.text());
+  const events = parseEvents(await response.text());
   expect(events[0].type).toBe("node.pending");
   expect(events.at(-1)?.type).toBe("node.done");
 
@@ -100,7 +108,7 @@ test("real server streams ordered events and persists the answer", async () => {
   expect(body).not.toContain("TITLE:");
   expect(body).not.toContain("SOURCES:");
 
-  const burrow = (await (await app.fetch(new Request("http://api/burrows/demo"))).json()) as {
+  const burrow = (await (await call(`/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: BurrowNode[];
   };
   const saved = burrow.nodes.find((node) => node.id === nodeId);
@@ -141,7 +149,7 @@ test("a second client attaches to a running node without a second run", async ()
   const started = response.text();
 
   // Issued while the first request is still streaming: the run is live.
-  const attached = parseStream(await (await stream(nodeId)).text());
+  const attached = parseEvents(await (await stream(nodeId)).text());
   const done = attached.at(-1);
   if (done?.type !== "node.done") throw new Error("attach got no terminal");
   expect(done.node.id).toBe(nodeId);
@@ -158,12 +166,12 @@ test("attaching to a settled node replays its terminal node", async () => {
     parentId: "node_root",
     origin: { question: "Replay after the fact?" },
   });
-  const events = parseStream(await response.text());
+  const events = parseEvents(await response.text());
   const done = events.at(-1);
   if (done?.type !== "node.done") throw new Error("no terminal event");
   const nodeId = done.node.id;
 
-  const replay = parseStream(await (await stream(nodeId)).text());
+  const replay = parseEvents(await (await stream(nodeId)).text());
   const again = replay.at(-1);
   if (again?.type !== "node.done") throw new Error("no replayed terminal");
   expect(again.node).toEqual(done.node);
@@ -176,17 +184,15 @@ test("attaching to an unknown node is 404", async () => {
 test("cancelling a run settles the node stopped", async () => {
   const { response, nodeId } = await startAsk("Cancel me?");
   const started = response.text();
-  await app.fetch(new Request(`http://api/nodes/${nodeId}/cancel`, { method: "POST" }));
+  await call(`/nodes/${nodeId}/cancel`, { method: "POST" });
   await started;
 
   expect((await burrowNodes()).find((node) => node.id === nodeId)?.status).toBe("stopped");
 });
 
-test("cancelling an unknown node is a no-op", async () => {
-  const response = await app.fetch(
-    new Request("http://api/nodes/nope/cancel", { method: "POST" }),
-  );
-  expect(response.status).toBe(200);
+test("cancelling an unknown node is not found", async () => {
+  const response = await call("/nodes/nope/cancel", { method: "POST" });
+  expect(response.status).toBe(404);
 });
 
 test("real server rejects an empty ask", async () => {
@@ -195,7 +201,7 @@ test("real server rejects an empty ask", async () => {
 
 test("an answer with no text settles failed, keeps meta, and emits no tokens", async () => {
   const { response } = await startAsk("zzempty");
-  const events = parseStream(await response.text());
+  const events = parseEvents(await response.text());
   const done = events.at(-1);
   if (done?.type !== "node.error") throw new Error("no terminal event");
 

@@ -48,7 +48,7 @@ test("position and camera survive a reload", async ({ page }) => {
   expect(matrix.scale).toBeCloseTo(saved.zoom, 2);
 
   // And the card sits where the server put it.
-  const { nodes } = (await (await page.request.get("/api/burrows/demo")).json()) as {
+  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: { id: string; position: { x: number; y: number } }[];
   };
   const root = nodes.find((node) => node.id === rootId);

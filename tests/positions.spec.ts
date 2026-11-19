@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readNodeRow, readViewport, resetDemoBurrow } from "./db.ts";
-import { card, drag, head, open, rootId, viewportMatrix } from "./helpers.ts";
+import { card, drag, head, open, rootId, signInContext, viewportMatrix } from "./helpers.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -73,6 +73,7 @@ test("a clean browser lands on the stored camera with no local state", async ({ 
 
   const context = await browser.newContext({ baseURL: "http://localhost:5173" });
   const clean = await context.newPage();
+  await signInContext(context);
   await clean.goto("/");
   await expect(clean.locator(".react-flow__node")).toHaveCount(4);
 

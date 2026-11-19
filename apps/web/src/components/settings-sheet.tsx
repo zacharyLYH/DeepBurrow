@@ -3,6 +3,7 @@ import type { Preset } from "@deepburrow/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { apiFetch } from "@/lib/api";
 import {
   DEFAULT_PRESETS,
   MAX_READING,
@@ -119,7 +120,101 @@ function PresetEditor() {
   );
 }
 
-export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function Account({
+  email,
+  onSignOut,
+}: {
+  email: string;
+  onSignOut: (notice?: string) => void;
+}) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const change = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const response = await apiFetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? "Could not change password");
+        return;
+      }
+      onSignOut("Password changed. Sign in again.");
+    } catch {
+      setError("Could not reach the server");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Row label="Email">
+        <span data-testid="account-email" className="text-xs text-muted-foreground">
+          {email}
+        </span>
+      </Row>
+      <Row label="Session">
+        <Button data-testid="sign-out" size="xs" variant="outline" onClick={() => onSignOut()}>
+          Sign out
+        </Button>
+      </Row>
+      <form onSubmit={change} className="space-y-2 pt-2">
+        <Input
+          aria-label="Current password"
+          data-testid="current-password"
+          type="password"
+          autoComplete="current-password"
+          placeholder="Current password"
+          required
+          value={current}
+          onChange={(event) => setCurrent(event.target.value)}
+          className="h-8 text-xs"
+        />
+        <Input
+          aria-label="New password"
+          data-testid="new-password"
+          type="password"
+          autoComplete="new-password"
+          placeholder="New password (10+ characters)"
+          minLength={10}
+          required
+          value={next}
+          onChange={(event) => setNext(event.target.value)}
+          className="h-8 text-xs"
+        />
+        {error && (
+          <p data-testid="password-error" role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
+        <Button data-testid="change-password" size="xs" variant="outline" disabled={busy}>
+          {busy ? "Changing…" : "Change password"}
+        </Button>
+      </form>
+    </>
+  );
+}
+
+export function SettingsSheet({
+  open,
+  onClose,
+  user,
+  onSignOut,
+}: {
+  open: boolean;
+  onClose: () => void;
+  user: { id: string; email: string };
+  onSignOut: (notice?: string) => void;
+}) {
   const settings = useSettings();
 
   return (
@@ -189,6 +284,11 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
           <section>
             <h3>Asking</h3>
             <PresetEditor />
+          </section>
+
+          <section>
+            <h3>Account</h3>
+            <Account email={user.email} onSignOut={onSignOut} />
           </section>
         </div>
 

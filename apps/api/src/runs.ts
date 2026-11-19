@@ -12,6 +12,7 @@ const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 120_000);
 type Subscriber = (event: Event) => Promise<void>;
 
 export type Run = {
+  userId: string;
   nodeId: string;
   abort: AbortController;
   subscribers: Set<Subscriber>;
@@ -23,9 +24,9 @@ const activeRuns = new Map<string, Run>();
 
 const reasonOf = (error: unknown) => (error instanceof Error ? error.message : "Failed");
 
-const save = (node: Node, patch: Partial<Node>): Node => {
+const save = (userId: string, node: Node, patch: Partial<Node>): Node => {
   const next = { ...node, ...patch, updatedAt: Date.now() };
-  putNode(next);
+  putNode(userId, next);
   return next;
 };
 
@@ -44,7 +45,7 @@ async function execute(run: Run, node: Node, ask: string) {
     await broadcast(run, { nodeId: node.id, type: "node.pending", node });
 
     const events = await graph.stream(
-      { nodeId: node.id, ask, lineage: node.parentId ? lineage(node.parentId) : "" },
+      { nodeId: node.id, ask, lineage: node.parentId ? lineage(run.userId, node.parentId) : "" },
       { streamMode: "custom", signal: run.abort.signal },
     );
 
@@ -68,20 +69,21 @@ async function execute(run: Run, node: Node, ask: string) {
     // only way forward, and the stored meta (title, sources) is kept.
     if (!answer.trim()) throw new Error("Empty answer");
 
-    save(node, { ...meta, markdown: answer, status: "answered", error: "" });
+    save(run.userId, node, { ...meta, markdown: answer, status: "answered", error: "" });
   } catch (cause) {
     const why = run.abort.signal.reason;
     const status = why === "cancel" ? "stopped" : "failed";
     const error = why === "cancel" ? "" : why === "timeout" ? "Timed out" : reasonOf(cause);
-    save(node, { ...meta, markdown: answer, status, error });
+    save(run.userId, node, { ...meta, markdown: answer, status, error });
   } finally {
     clearTimeout(timer);
     if (activeRuns.get(node.id) === run) activeRuns.delete(node.id);
   }
 }
 
-export function startRun(node: Node, ask: string): Run {
+export function startRun(userId: string, node: Node, ask: string): Run {
   const run: Run = {
+    userId,
     nodeId: node.id,
     abort: new AbortController(),
     subscribers: new Set(),
@@ -93,7 +95,10 @@ export function startRun(node: Node, ask: string): Run {
   return run;
 }
 
-export const getRun = (nodeId: string) => activeRuns.get(nodeId);
+export const getRun = (userId: string, nodeId: string) => {
+  const run = activeRuns.get(nodeId);
+  return run?.userId === userId ? run : undefined;
+};
 
 export function subscribe(run: Run, subscriber: Subscriber) {
   run.subscribers.add(subscriber);
@@ -102,6 +107,7 @@ export function subscribe(run: Run, subscriber: Subscriber) {
   };
 }
 
-export function cancelRun(nodeId: string) {
-  activeRuns.get(nodeId)?.abort.abort("cancel");
+export function cancelRun(userId: string, nodeId: string) {
+  const run = getRun(userId, nodeId);
+  if (run) run.abort.abort("cancel");
 }

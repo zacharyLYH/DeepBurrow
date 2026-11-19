@@ -8,6 +8,7 @@ import {
   type Preset,
   type Viewport,
 } from "@deepburrow/types";
+import { apiFetch } from "./api";
 import { liveContent } from "./live-content";
 import { ask as askApi, attach as attachApi, cancel } from "./stream";
 
@@ -24,7 +25,7 @@ const payload = (origin: Origin, parentId: string | null, nodeId?: string) => ({
 });
 
 const send = (path: string, method: "PATCH" | "POST" | "DELETE", body?: unknown) =>
-  fetch(`/api${path}`, {
+  apiFetch(`/api${path}`, {
     method,
     headers: body ? { "content-type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -168,7 +169,7 @@ export function useBurrow(burrowId: string) {
     setLoading(true);
     setLoadError("");
     try {
-      const response = await fetch(`/api/burrows/${burrowId}`);
+      const response = await apiFetch(`/api/burrows/${burrowId}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as { burrow: Burrow; nodes: BurrowNode[] };
       setTitle(data.burrow.title);

@@ -21,6 +21,7 @@ export default defineConfig({
       // short latency keeps progress visible without slowing the suite.
       env: {
         DATA_DIR: "data/test",
+        APP_ORIGIN: "http://localhost:5173",
         FAKE_PACE_MS: "20",
         FAKE_LATENCY_MS: "100",
         FAKE_ROUNDS: "2",

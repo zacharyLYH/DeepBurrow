@@ -1,4 +1,5 @@
 import type { Preset } from "@deepburrow/types";
+import { apiFetch } from "./api";
 import { createStore, useStore } from "./store";
 
 export type Theme = "light" | "dark";
@@ -66,7 +67,7 @@ let pending: number | undefined;
 const persist = () => {
   window.clearTimeout(pending);
   pending = window.setTimeout(() => {
-    void fetch("/api/settings", {
+    void apiFetch("/api/settings", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(settingsStore.get()),
@@ -76,13 +77,18 @@ const persist = () => {
 
 export async function loadSettings() {
   try {
-    const response = await fetch("/api/settings");
+    const response = await apiFetch("/api/settings");
     if (!response.ok) return;
     const data = (await response.json()) as { settings: Partial<Settings> };
     settingsStore.set(merge(data.settings));
   } catch {
     // Offline: defaults are still usable, edits retry on the next write.
   }
+}
+
+export function resetSettings() {
+  window.clearTimeout(pending);
+  settingsStore.set(DEFAULTS);
 }
 
 export function setSettings(patch: Partial<Settings>) {

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readSettings, resetDemoBurrow } from "./db.ts";
-import { open } from "./helpers.ts";
+import { open, signInContext } from "./helpers.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -85,6 +85,7 @@ test("edits land on users.settings and a clean client reads them back", async ({
   // A fresh context has no local state, so everything must come from the row.
   const context = await browser.newContext({ baseURL: "http://localhost:5173" });
   const clean = await context.newPage();
+  await signInContext(context);
   await clean.goto("/");
   await expect(clean.locator(".react-flow__node")).toHaveCount(4);
   await expect(clean.locator("html")).toHaveAttribute("data-theme", "dark");

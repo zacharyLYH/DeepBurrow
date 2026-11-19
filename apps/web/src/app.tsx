@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
+import { apiFetch, onAuthExpired, type Session } from "@/lib/api";
+import { AuthScreen } from "@/components/auth-screen";
 import { AskPopover } from "@/components/ask-popover";
 import { Canvas } from "@/components/canvas";
 import { Lightbox } from "@/components/markdown";
@@ -13,13 +15,11 @@ import { Toaster, toast } from "@/components/ui/sonner";
 import { cardMarkdown } from "@/lib/copy";
 import { exportBurrowHtml } from "@/lib/export";
 import { CARD_HEIGHT, CARD_WIDTH } from "@/lib/layout";
-import { loadSettings, presetsFor, toggleTheme, useSettings } from "@/lib/settings";
+import { loadSettings, presetsFor, resetSettings, toggleTheme, useSettings } from "@/lib/settings";
 import { usePassageSelection } from "@/lib/use-passage";
 import { useShortcuts } from "@/lib/use-shortcuts";
 import { useBurrow } from "@/lib/use-burrow";
 
-// Single demo burrow until auth lands in M7.
-const BURROW_ID = "demo";
 const FIT = { padding: 0.12, duration: 250 };
 type Overlay = "palette" | "settings" | "shortcuts";
 
@@ -31,8 +31,62 @@ function Notice({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function App() {
-  const burrow = useBurrow(BURROW_ID);
+export function AuthGate() {
+  const [session, setSession] = useState<Session | null>();
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    const expired = onAuthExpired(() => {
+      resetSettings();
+      if (live) setSession(null);
+    });
+    void apiFetch("/api/auth/me")
+      .then(async (response) => {
+        if (!live) return;
+        setSession(response.ok ? ((await response.json()) as Session) : null);
+      })
+      .catch(() => live && setSession(null));
+    return () => {
+      live = false;
+      expired();
+    };
+  }, []);
+
+  if (session === undefined) return <Notice>Loading account…</Notice>;
+  if (session === null) {
+    return (
+      <AuthScreen
+        notice={notice}
+        onSession={(next) => {
+          setNotice("");
+          setSession(next);
+        }}
+      />
+    );
+  }
+
+  return (
+    <App
+      session={session}
+      onSignOut={(message = "") => {
+        void fetch("/api/auth/logout", { method: "POST" });
+        resetSettings();
+        setNotice(message);
+        setSession(null);
+      }}
+    />
+  );
+}
+
+export function App({
+  session,
+  onSignOut,
+}: {
+  session: Session;
+  onSignOut: (notice?: string) => void;
+}) {
+  const burrow = useBurrow(session.burrowId);
   const settings = useSettings();
   const { fitView, setCenter } = useReactFlow();
 
@@ -179,7 +233,12 @@ export function App() {
         ]}
       />
 
-      <SettingsSheet open={overlay === "settings"} onClose={() => setOverlay(null)} />
+      <SettingsSheet
+        open={overlay === "settings"}
+        onClose={() => setOverlay(null)}
+        user={session.user}
+        onSignOut={onSignOut}
+      />
       <Shortcuts open={overlay === "shortcuts"} onClose={() => setOverlay(null)} />
       <Lightbox />
       <Toaster />

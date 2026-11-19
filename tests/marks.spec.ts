@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow } from "./db.ts";
 import { cards, open, rootId, selectPassage } from "./helpers.ts";
 
@@ -37,7 +38,7 @@ test("the question travels with the selection", async ({ page }) => {
   const childId = (await child.getAttribute("data-testid"))!.replace("card-", "");
   await expect(child.getByTestId(`origin-${childId}`)).toHaveText("What does probing buy us?");
 
-  const { nodes } = (await (await page.request.get("/api/burrows/demo")).json()) as {
+  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: { id: string; origin: { selectedText?: string } }[];
   };
   const created = nodes.find((node) => node.id === childId);

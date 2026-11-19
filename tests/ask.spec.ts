@@ -9,6 +9,7 @@ import {
   open,
   openDrawer,
   rootId,
+  signIn,
   watchCards,
 } from "./helpers.ts";
 
@@ -132,8 +133,9 @@ test("reloading during research reattaches and finishes", async ({ page }) => {
 });
 
 test("load failure offers retry", async ({ page }) => {
+  await signIn(page);
   let failing = true;
-  await page.route("**/api/burrows/demo", (route) =>
+  await page.route(`**/api/burrows/${fixtureBurrow.id}`, (route) =>
     failing
       ? route.fulfill({ status: 500, body: "boom" })
       : route.fulfill({ json: { burrow: fixtureBurrow, nodes: fixtureNodes } }),
@@ -171,7 +173,7 @@ test("a follow-up chip fills the drawer, then submits a child", async ({ page })
   expect(childId).not.toBe(parentId);
   await expect(input).toHaveValue("");
 
-  const { nodes } = (await (await page.request.get("/api/burrows/demo")).json()) as {
+  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: { id: string; parentId: string | null; origin: { question: string } }[];
   };
   const created = nodes.find((node) => node.id === childId);

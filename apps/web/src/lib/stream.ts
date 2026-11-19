@@ -1,5 +1,6 @@
 import { parseEvent } from "@deepburrow/types";
 import type { Event, Origin } from "@deepburrow/types";
+import { apiFetch } from "./api";
 
 export type AskInput = {
   nodeId?: string;
@@ -29,7 +30,7 @@ async function readEvents(
 }
 
 export async function ask(input: AskInput, signal: AbortSignal, onEvent: (event: Event) => void) {
-  const response = await fetch("/api/ask", {
+  const response = await apiFetch("/api/ask", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
@@ -39,9 +40,9 @@ export async function ask(input: AskInput, signal: AbortSignal, onEvent: (event:
 }
 
 export async function attach(nodeId: string, signal: AbortSignal, onEvent: (event: Event) => void) {
-  await readEvents(await fetch(`/api/nodes/${nodeId}/stream`, { signal }), onEvent);
+  await readEvents(await apiFetch(`/api/nodes/${nodeId}/stream`, { signal }), onEvent);
 }
 
 export function cancel(nodeId: string) {
-  return fetch(`/api/nodes/${nodeId}/cancel`, { method: "POST" });
+  return apiFetch(`/api/nodes/${nodeId}/cancel`, { method: "POST" });
 }

@@ -2,6 +2,12 @@ import type { Burrow, Node } from "./types.ts";
 
 const T = 1_760_000_000_000;
 
+// Local/test fixture only; the suite seeds this account before each test.
+export const demoCredentials = {
+  email: "demo@deepburrow.dev",
+  password: "deepburrow-demo-password",
+};
+
 // Positions are server-owned: the app never recomputes layout on load.
 const ROW = 344;
 

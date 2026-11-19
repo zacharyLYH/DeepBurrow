@@ -1,5 +1,5 @@
-import { expect, type Locator, type Page } from "@playwright/test";
-import { fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { demoCredentials, fixtureNodes } from "../packages/types/src/fixtures.ts";
 
 export const baseCount = fixtureNodes.length;
 export const rootId = fixtureNodes[0].id;
@@ -7,7 +7,18 @@ export const rootId = fixtureNodes[0].id;
 export const cards = (page: Page) => page.locator('[data-testid^="card-"]');
 export const card = (page: Page, id: string) => page.getByTestId(`card-${id}`);
 
+export async function signIn(page: Page) {
+  const response = await page.request.post("/api/auth/sign-in", { data: demoCredentials });
+  expect(response.ok()).toBe(true);
+}
+
+export async function signInContext(context: BrowserContext) {
+  const response = await context.request.post("/api/auth/sign-in", { data: demoCredentials });
+  expect(response.ok()).toBe(true);
+}
+
 export async function open(page: Page, count = baseCount) {
+  await signIn(page);
   await page.goto("/");
   await expect(page.locator(".react-flow__node")).toHaveCount(count);
   // One edge per non-root node, anchored to the card's DOM handles.

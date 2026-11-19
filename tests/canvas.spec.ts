@@ -1,5 +1,5 @@
 import { devices, expect, test, type Page } from "@playwright/test";
-import { fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { fixtureNodes , fixtureBurrow} from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow } from "./db.ts";
 import { open, viewportMatrix } from "./helpers.ts";
 
@@ -21,7 +21,7 @@ const scatter = async (page: Page, camera?: { x: number; y: number; zoom: number
   for (const [id, position] of Object.entries(scattered)) {
     await page.request.patch(`/api/nodes/${id}`, { data: { position } });
   }
-  if (camera) await page.request.patch("/api/burrows/demo", { data: { viewport: camera } });
+  if (camera) await page.request.patch(`/api/burrows/${fixtureBurrow.id}`, { data: { viewport: camera } });
   await page.reload();
   await expect(page.locator(".react-flow__node")).toHaveCount(4);
   await expect(page.locator(".react-flow__edge")).toHaveCount(3);

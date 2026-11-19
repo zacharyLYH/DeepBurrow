@@ -1,6 +1,7 @@
 import { devices, expect, test, type Page } from "@playwright/test";
+import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow, readNodeRow, readViewport } from "./db.ts";
-import { card, cards, jump, open, rootId, viewportMatrix } from "./helpers.ts";
+import { card, cards, jump, open, rootId, signInContext, viewportMatrix } from "./helpers.ts";
 
 const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];
 test.use(iphone13);
@@ -108,7 +109,7 @@ test("a finger long-press on text asks about the passage", async ({ page }) => {
   await expect(child.getByTestId(`reference-${childId}`)).toContainText(passage);
   await expect(card(page, rootId).locator("mark")).toHaveCount(0);
 
-  const { nodes } = (await (await page.request.get("/api/burrows/demo")).json()) as {
+  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: { id: string; parentId: string | null; origin: { selectedText?: string } }[];
   };
   expect(nodes.some((node) => node.parentId === "node_root" && node.origin.selectedText === passage)).toBe(
@@ -142,6 +143,7 @@ test("a desktop drag lands on mobile unchanged", async ({ page }) => {
   // The phone is a separate context reading the same rows.
   const phone = await page.context().browser()!.newContext({ ...iphone13, baseURL: "http://localhost:5173" });
   const mobile = await phone.newPage();
+  await signInContext(phone);
   await mobile.goto("/");
   await expect(mobile.locator(".react-flow__node")).toHaveCount(4);
 

@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 import { fixtureNodes } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow } from "./db.ts";
-import { ask, open } from "./helpers.ts";
+import { ask, open, signIn } from "./helpers.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -78,6 +78,7 @@ test("sparse export keeps every card and grows the page instead of fitting", asy
     node_cubic: { x: 0, y: 1000 },
     node_long: { x: 1500, y: 1000 },
   };
+  await signIn(page);
   for (const [id, position] of Object.entries(spread)) {
     await page.request.patch(`/api/nodes/${id}`, { data: { position } });
   }

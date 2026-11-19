@@ -1,19 +1,20 @@
 import { expect, test } from "@playwright/test";
 import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow } from "./db.ts";
-import { cards, open } from "./helpers.ts";
+import { cards, open, signIn } from "./helpers.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
 // An empty burrow is a load with no nodes; the server still owns the write.
 const emptyBurrow = async (page: import("@playwright/test").Page) => {
-  await page.route("**/api/burrows/demo", (route) =>
+  await page.route(`**/api/burrows/${fixtureBurrow.id}`, (route) =>
     route.fulfill({ json: { burrow: fixtureBurrow, nodes: [] } }),
   );
 };
 
 test("empty burrow shows one composer and submits a root card", async ({ page }) => {
   await emptyBurrow(page);
+  await signIn(page);
   await page.goto("/");
 
   await expect(page.getByTestId("entry-composer")).toBeVisible();
@@ -29,7 +30,7 @@ test("empty burrow shows one composer and submits a root card", async ({ page })
   await expect(page.getByTestId("entry-composer")).toHaveCount(0);
 
   // The row really is a root: no parent on the server.
-  const { nodes } = (await (await page.request.get("/api/burrows/demo")).json()) as {
+  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: { id: string; parentId: string | null; origin: { question: string } }[];
   };
   const created = nodes.find((node) => node.origin.question === "What is the root question?");

@@ -8,6 +8,6 @@ RUN npm ci --omit=dev
 COPY apps/api apps/api
 COPY packages/types packages/types
 COPY db db
-ENV PORT=8787 DATA_DIR=/data
+ENV PORT=8787 DATA_DIR=/data NODE_ENV=production
 EXPOSE 8787
 CMD ["node", "apps/api/src/server.ts"]

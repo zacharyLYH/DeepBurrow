@@ -16,8 +16,8 @@ Build the whole loop first: ask → answer card. Then split at the contract: FE 
 | M3 | Backend cutover | Real BE + fake model; reload and retry work |
 | M4 | Loop | Judge, rounds, progress lines; no stuck cards |
 | M5 | Parity + durable graph | Reference flows match or every delta is logged; rename/delete/layout survive a fresh client |
-| M6 | Search | Fixture search runs; sources are filtered and cited |
-| M7 | Auth + BYOK + real model | Login, verified key, real GFM/KaTeX/Mermaid output |
+| M6 | Auth + user isolation | Password accounts, refreshable sessions, password change, every query scoped to the signed-in user |
+| M7 | Search + BYOK + LLM loop | Search filters sources; verified model key drives the real judge/search/compose loop |
 | M8 | Notes + assets | Notes feed prompts; files/PDF/images/URLs become origins |
 | M9 | PWA | Install + hidden-tab completion notification |
 
@@ -34,8 +34,8 @@ flowchart TD
   C -- no --> D{Needs only graph data<br/>or a contract change?}
   D -- yes --> M2[Current milestone + contract change]
   D -- no --> E{What external piece?}
-  E -- search --> S2[Search milestone]
-  E -- model, auth --> I[Integration milestone]
+  E -- auth, user data --> I6[M6 auth milestone]
+  E -- search, model --> I7[M7 integration milestone]
   E -- notes, files --> A[Authoring milestone]
   E -- PWA --> P[Last]
 ```
@@ -43,8 +43,8 @@ flowchart TD
 | Missing piece | Home |
 |---|---|
 | Nothing, or graph data / contract shape | Current milestone |
-| Search | Search milestone |
-| Real model, auth | Integration |
+| Auth and user isolation | M6 |
+| Search, real model, BYOK | M7 integration |
 | Notes, reactions, files | Authoring |
 | PWA | Last |
 | A permanent product rule | README |
@@ -64,10 +64,9 @@ flowchart LR
   FE --> Parity[Parity]
   Cut --> Parity
   Loop --> Parity
-  Loop --> Search[Search]
-  C --> Real[Auth + BYOK + real model]
+  C --> Auth[Auth + user isolation]
+  Auth --> Search[Search + BYOK + LLM loop]
   Search --> Author[Notes + assets]
-  Real --> Author
   Author --> PWA[PWA]
 ```
 

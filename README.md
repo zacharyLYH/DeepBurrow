@@ -16,11 +16,12 @@ Reference UX: `~/Desktop/rabbithole` (vanilla JS + esbuild). We keep its feel an
 
 ## Flow
 
-1. Sign in with email; connect an OpenAI-compatible provider (base URL, model, key). The backend verifies it.
-2. Ask a question or attach a file.
-3. The backend agent researches; tool calls never reach the browser.
-4. The answer streams into a card with title, sources and follow-ups.
-5. Branch from the answer or a selection. Context is the lineage root→node, never siblings.
+1. Sign in with email and password; change the password in Settings. Sessions use short-lived access cookies and rotating refresh credentials.
+2. Connect an OpenAI-compatible provider (base URL, model, key). The backend verifies it.
+3. Ask a question or attach a file.
+4. The backend agent researches; tool calls never reach the browser.
+5. The answer streams into a card with title, sources and follow-ups.
+6. Branch from the answer or a selection. Context is the lineage root→node, never siblings.
 
 ```mermaid
 flowchart LR
@@ -75,10 +76,14 @@ plan → search? → compose → judge → search? → summarize → END
 SQLite via `node:sqlite`, raw SQL, no ORM. Lineage is the node parent chain.
 
 ```
-users(id, email, base_url, model, api_key_enc, search)
+users(id, email, password_hash, base_url, model, api_key_enc, search)
+auth_sessions(id, user_id, created_at, expires_at, revoked_at)
+refresh_tokens(id, session_id, token_hash, created_at, expires_at, used_at)
 burrows(id, user_id, title)
 nodes(id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, canvas, deleted_at)
 ```
+
+Every private query is scoped to the authenticated user's ID. Burrows are owned by one user, and node access is authorized through that ownership chain. Passwords use a one-way password hash; encryption keys are not password hashes.
 
 `origin` is UI provenance only; prompts come from `markdown` + lineage. Canvas state and soft-delete live on the node.
 
@@ -87,6 +92,13 @@ nodes(id, burrow_id, parent_id, title, markdown, origin, sources, followups, sta
 - FE: React, Vite, Tailwind, shadcn/ui, `@xyflow/react`.
 - BE: Hono on Node, LangGraph.js, `node:sqlite`, SSE.
 - Shared `types` for state, nodes and events. Docker Compose; nginx serves the build and proxies `/api/`.
+
+## Auth configuration
+
+- `AUTH_SECRET` — 32+ characters. Required when `NODE_ENV=production`.
+- `APP_ORIGIN` — comma-separated browser origins allowed to send state-changing requests.
+- Access lasts 15 minutes, refresh 30 days, and 10 failed attempts per IP/scope are allowed per 15 minutes. Production cookies are Secure.
+- Tests seed the demo account and fixture burrow themselves; the API never creates a demo account.
 
 ## Scope rule
 

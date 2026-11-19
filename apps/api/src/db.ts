@@ -1,8 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { fixtureBurrow, fixtureNodes } from "../../../packages/types/src/fixtures.ts";
 import type {
   Burrow,
   Coords,
@@ -12,8 +12,13 @@ import type {
   Viewport,
 } from "../../../packages/types/src/types.ts";
 
-// "demo" is the only burrow until auth lands in M7.
-export const DEMO_BURROW = "demo";
+type UserRow = {
+  id: string;
+  email: string;
+  password_hash: string;
+  settings: string;
+  created_at: number;
+};
 
 type BurrowRow = {
   id: string;
@@ -42,6 +47,19 @@ type NodeRow = {
   updated_at: number;
 };
 
+export type User = { id: string; email: string };
+export type AuthUser = User & { passwordHash: string };
+export type RefreshRecord = {
+  tokenId: string;
+  sessionId: string;
+  userId: string;
+  tokenHash: string;
+  tokenExpiresAt: number;
+  usedAt: number | null;
+  sessionExpiresAt: number;
+  sessionRevokedAt: number | null;
+};
+
 const dataDir = process.env.DATA_DIR ?? fileURLToPath(new URL("../../../data/", import.meta.url));
 mkdirSync(dataDir, { recursive: true });
 
@@ -51,6 +69,8 @@ db.exec("PRAGMA journal_mode = WAL");
 
 const migrations = fileURLToPath(new URL("../../../db/migrations/", import.meta.url));
 for (const file of readdirSync(migrations).sort()) db.exec(readFileSync(`${migrations}${file}`, "utf8"));
+
+const toUser = (row: UserRow): User => ({ id: row.id, email: row.email });
 
 const toBurrow = (row: BurrowRow): Burrow => ({
   id: row.id,
@@ -77,6 +97,61 @@ const toNode = (row: NodeRow): Node => ({
   updatedAt: row.updated_at,
 });
 
+const authUser = (row: UserRow | undefined): AuthUser | null =>
+  row ? { ...toUser(row), passwordHash: row.password_hash } : null;
+const userById = db.prepare("SELECT * FROM users WHERE id = ?");
+const userByEmail = db.prepare("SELECT * FROM users WHERE email = ?");
+
+export function findUserByEmail(email: string): AuthUser | null {
+  return authUser(userByEmail.get(email) as UserRow | undefined);
+}
+
+export function getUser(id: string): User | null {
+  const row = userById.get(id) as UserRow | undefined;
+  return row ? toUser(row) : null;
+}
+
+export function getAuthUser(id: string): AuthUser | null {
+  return authUser(userById.get(id) as UserRow | undefined);
+}
+
+export function setPassword(userId: string, passwordHash: string) {
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
+}
+
+export function createAccount(email: string, passwordHash: string): User {
+  const id = randomUUID();
+  const now = Date.now();
+  db.exec("BEGIN");
+  try {
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    ).run(id, email, passwordHash, now);
+    db.prepare(
+      "INSERT INTO burrows (id, user_id, title, viewport, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(
+      randomUUID(),
+      id,
+      "New burrow",
+      JSON.stringify({ x: 0, y: 0, zoom: 1 }),
+      now,
+      now,
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return { id, email };
+}
+
+export function primaryBurrow(userId: string): Burrow | null {
+  const row = db
+    .prepare("SELECT * FROM burrows WHERE user_id = ? ORDER BY created_at, id LIMIT 1")
+    .get(userId) as BurrowRow | undefined;
+  return row ? toBurrow(row) : null;
+}
+
 const upsertNode = db.prepare(
   `INSERT INTO nodes (id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, position_x, position_y, created_at, updated_at)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -88,7 +163,10 @@ const upsertNode = db.prepare(
      updated_at = excluded.updated_at`,
 );
 
-export function putNode(node: Node) {
+const ownsBurrow = db.prepare("SELECT 1 FROM burrows WHERE id = ? AND user_id = ?");
+
+export function putNode(userId: string, node: Node) {
+  if (!ownsBurrow.get(node.burrowId, userId)) throw new Error("node burrow not owned");
   upsertNode.run(
     node.id,
     node.burrowId,
@@ -107,20 +185,26 @@ export function putNode(node: Node) {
   );
 }
 
-// Deleted rows stay in the table for restore, but never reach a normal read.
-export function getNode(id: string): Node | null {
-  const row = db.prepare("SELECT * FROM nodes WHERE id = ?").get(id) as NodeRow | undefined;
-  return row && row.deleted_at === null ? toNode(row) : null;
+const nodeRow = (userId: string, id: string, includeDeleted: boolean) =>
+  db
+    .prepare(
+      `SELECT n.* FROM nodes n JOIN burrows b ON b.id = n.burrow_id
+       WHERE n.id = ? AND b.user_id = ?${includeDeleted ? "" : " AND n.deleted_at IS NULL"}`,
+    )
+    .get(id, userId) as NodeRow | undefined;
+
+export function getNode(userId: string, id: string): Node | null {
+  const row = nodeRow(userId, id, false);
+  return row ? toNode(row) : null;
 }
 
-// Demo resolves to the first burrow; everything else by id.
-const burrowRow = (id: string) =>
-  (id === DEMO_BURROW
-    ? db.prepare("SELECT * FROM burrows ORDER BY created_at LIMIT 1").get()
-    : db.prepare("SELECT * FROM burrows WHERE id = ?").get(id)) as BurrowRow | undefined;
+const burrowRow = (userId: string, id: string) =>
+  db.prepare("SELECT * FROM burrows WHERE id = ? AND user_id = ?").get(id, userId) as
+    | BurrowRow
+    | undefined;
 
-export function getBurrow(id: string): { burrow: Burrow; nodes: Node[] } | null {
-  const row = burrowRow(id);
+export function getBurrow(userId: string, id: string): { burrow: Burrow; nodes: Node[] } | null {
+  const row = burrowRow(userId, id);
   if (!row) return null;
   const burrow = toBurrow(row);
   const nodes = db
@@ -129,18 +213,21 @@ export function getBurrow(id: string): { burrow: Burrow; nodes: Node[] } | null 
   return { burrow, nodes: nodes.map(toNode) };
 }
 
-// One camera per burrow, shared by every device.
-export function writeViewport(id: string, viewport: Viewport): Burrow | null {
-  const row = burrowRow(id);
+export function writeViewport(userId: string, id: string, viewport: Viewport): Burrow | null {
+  const row = burrowRow(userId, id);
   if (!row) return null;
   const json = JSON.stringify(viewport);
-  db.prepare("UPDATE burrows SET viewport = ?, updated_at = ? WHERE id = ?").run(json, Date.now(), row.id);
+  db.prepare("UPDATE burrows SET viewport = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(
+    json,
+    Date.now(),
+    row.id,
+    userId,
+  );
   return toBurrow({ ...row, viewport: json });
 }
 
-// Presets, theme and reading size belong to the user row.
-export function readSettings(): Record<string, unknown> {
-  const row = db.prepare("SELECT settings FROM users ORDER BY created_at LIMIT 1").get() as
+export function readSettings(userId: string): Record<string, unknown> {
+  const row = db.prepare("SELECT settings FROM users WHERE id = ?").get(userId) as
     | { settings: string }
     | undefined;
   try {
@@ -150,19 +237,21 @@ export function readSettings(): Record<string, unknown> {
   }
 }
 
-export function writeSettings(patch: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...readSettings(), ...patch };
-  db.prepare(
-    "UPDATE users SET settings = ? WHERE id = (SELECT id FROM users ORDER BY created_at LIMIT 1)",
-  ).run(JSON.stringify(next));
+export function writeSettings(
+  userId: string,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...readSettings(userId), ...patch };
+  db.prepare("UPDATE users SET settings = ? WHERE id = ?").run(JSON.stringify(next), userId);
   return next;
 }
 
 export function patchNode(
+  userId: string,
   id: string,
   patch: { title?: string; position?: Coords },
 ): Node | null {
-  const node = getNode(id);
+  const node = getNode(userId, id);
   if (!node) return null;
   const next: Node = {
     ...node,
@@ -170,7 +259,7 @@ export function patchNode(
     position: patch.position ?? node.position,
     updatedAt: Date.now(),
   };
-  putNode(next);
+  putNode(userId, next);
   return next;
 }
 
@@ -179,73 +268,133 @@ const MAX_DEPTH = 64;
 
 const descendants = db.prepare(
   `WITH RECURSIVE down (id, depth) AS (
-     SELECT id, 0 FROM nodes WHERE id = ?
+     SELECT id, 0 FROM nodes WHERE id = ? AND burrow_id = ?
      UNION ALL
      SELECT n.id, down.depth + 1 FROM nodes n JOIN down ON n.parent_id = down.id
-     WHERE down.depth < ${MAX_DEPTH}
+     WHERE down.depth < ${MAX_DEPTH} AND n.burrow_id = ?
    )
    SELECT id FROM down`,
 );
 
 // One delete stamps the whole branch with the same instant; restore keys off it.
-export function deleteBranch(id: string): string[] | null {
-  if (!getNode(id)) return null;
-  const ids = (descendants.all(id) as { id: string }[]).map((row) => row.id);
+export function deleteBranch(userId: string, id: string): string[] | null {
+  const node = getNode(userId, id);
+  if (!node) return null;
+  const ids = (
+    descendants.all(id, node.burrowId, node.burrowId) as { id: string }[]
+  ).map((row) => row.id);
   const at = Date.now();
-  const soft = db.prepare("UPDATE nodes SET deleted_at = ? WHERE id = ?");
-  for (const nodeId of ids) soft.run(at, nodeId);
+  const soft = db.prepare("UPDATE nodes SET deleted_at = ? WHERE id = ? AND burrow_id = ?");
+  for (const nodeId of ids) soft.run(at, nodeId, node.burrowId);
   return ids;
 }
 
-export function restoreBranch(id: string): string[] {
-  const row = db.prepare("SELECT deleted_at FROM nodes WHERE id = ?").get(id) as
-    | { deleted_at: number | null }
-    | undefined;
-  if (!row?.deleted_at) return [];
-  const rows = db.prepare("SELECT id FROM nodes WHERE deleted_at = ?").all(row.deleted_at) as {
-    id: string;
-  }[];
-  db.prepare("UPDATE nodes SET deleted_at = NULL WHERE deleted_at = ?").run(row.deleted_at);
+export function restoreBranch(userId: string, id: string): string[] {
+  const node = nodeRow(userId, id, true);
+  if (!node?.deleted_at) return [];
+  const rows = db
+    .prepare("SELECT id FROM nodes WHERE deleted_at = ? AND burrow_id = ?")
+    .all(node.deleted_at, node.burrow_id) as { id: string }[];
+  db.prepare("UPDATE nodes SET deleted_at = NULL WHERE deleted_at = ? AND burrow_id = ?").run(
+    node.deleted_at,
+    node.burrow_id,
+  );
   return rows.map((item) => item.id);
 }
 
 // Root → node, markdown only. Siblings never enter context, and a deleted node
 // ends the chain.
-export function lineage(nodeId: string): string {
+export function lineage(userId: string, nodeId: string): string {
+  const node = getNode(userId, nodeId);
+  if (!node) return "";
   const rows = db
     .prepare(
       `WITH RECURSIVE up (id, parent_id, title, markdown, depth) AS (
          SELECT id, parent_id, title, markdown, 0 FROM nodes
-         WHERE id = ? AND deleted_at IS NULL
+         WHERE id = ? AND burrow_id = ? AND deleted_at IS NULL
          UNION ALL
          SELECT n.id, n.parent_id, n.title, n.markdown, up.depth + 1
          FROM nodes n JOIN up ON n.id = up.parent_id
-         WHERE up.depth < ${MAX_DEPTH} AND n.deleted_at IS NULL
+         WHERE up.depth < ${MAX_DEPTH} AND n.deleted_at IS NULL AND n.burrow_id = ?
        )
        SELECT title, markdown FROM up ORDER BY depth DESC`,
     )
-    .all(nodeId) as { title: string; markdown: string }[];
+    .all(nodeId, node.burrowId, node.burrowId) as { title: string; markdown: string }[];
   return rows.map((row) => `${row.title}\n${row.markdown}`).join("\n\n");
 }
 
-function seed() {
-  if (db.prepare("SELECT 1 FROM burrows LIMIT 1").get()) return;
-  db.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").run(
-    fixtureBurrow.userId,
-    "demo@deepburrow.dev",
-    fixtureBurrow.createdAt,
-  );
+export function createSession(userId: string, expiresAt: number) {
+  const id = randomUUID();
   db.prepare(
-    "INSERT INTO burrows (id, user_id, title, viewport, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(
-    fixtureBurrow.id,
-    fixtureBurrow.userId,
-    fixtureBurrow.title,
-    JSON.stringify(fixtureBurrow.viewport),
-    fixtureBurrow.createdAt,
-    fixtureBurrow.updatedAt,
-  );
-  for (const node of fixtureNodes) putNode(node);
+    "INSERT INTO auth_sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+  ).run(id, userId, Date.now(), expiresAt);
+  return id;
 }
 
-seed();
+export function refreshRecord(sessionId: string, tokenId: string): RefreshRecord | null {
+  const row = db
+    .prepare(
+      `SELECT t.id AS token_id, t.session_id, t.token_hash, t.expires_at AS token_expires_at,
+              t.used_at, s.user_id, s.expires_at AS session_expires_at, s.revoked_at
+       FROM refresh_tokens t
+       JOIN auth_sessions s ON s.id = t.session_id
+       WHERE t.id = ? AND t.session_id = ?`,
+    )
+    .get(tokenId, sessionId) as
+    | {
+        token_id: string;
+        session_id: string;
+        token_hash: string;
+        token_expires_at: number;
+        used_at: number | null;
+        user_id: string;
+        session_expires_at: number;
+        revoked_at: number | null;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    tokenId: row.token_id,
+    sessionId: row.session_id,
+    userId: row.user_id,
+    tokenHash: row.token_hash,
+    tokenExpiresAt: row.token_expires_at,
+    usedAt: row.used_at,
+    sessionExpiresAt: row.session_expires_at,
+    sessionRevokedAt: row.revoked_at,
+  };
+}
+
+export function consumeRefreshToken(sessionId: string, tokenId: string) {
+  const result = db
+    .prepare(
+      "UPDATE refresh_tokens SET used_at = ? WHERE id = ? AND session_id = ? AND used_at IS NULL",
+    )
+    .run(Date.now(), tokenId, sessionId);
+  return result.changes === 1;
+}
+
+export function appendRefreshToken(
+  sessionId: string,
+  tokenId: string,
+  tokenHash: string,
+  expiresAt: number,
+) {
+  db.prepare(
+    "INSERT INTO refresh_tokens (id, session_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+  ).run(tokenId, sessionId, tokenHash, Date.now(), expiresAt);
+}
+
+export function revokeSession(sessionId: string) {
+  db.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(
+    Date.now(),
+    sessionId,
+  );
+}
+
+export function revokeAllSessions(userId: string) {
+  db.prepare(
+    "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+  ).run(Date.now(), userId);
+}
+
