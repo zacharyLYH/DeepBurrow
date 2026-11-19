@@ -2,10 +2,15 @@ import type { Burrow, Node } from "./types.ts";
 
 const T = 1_760_000_000_000;
 
+// Positions are server-owned: the app never recomputes layout on load.
+const ROW = 344;
+
 export const fixtureBurrow: Burrow = {
   id: "burrow_fixture",
   userId: "user_fixture",
   title: "TCP congestion control",
+  // Wide enough to show the whole seeded row on a laptop without panning.
+  viewport: { x: 60, y: 140, zoom: 0.8 },
   createdAt: T,
   updatedAt: T,
 };
@@ -23,6 +28,7 @@ export const fixtureNodes: Node[] = [
     followups: ["Why double per RTT in slow start?"],
     status: "answered",
     error: "",
+    position: { x: 0, y: 0 },
     createdAt: T,
     updatedAt: T,
   },
@@ -38,6 +44,7 @@ export const fixtureNodes: Node[] = [
     followups: [],
     status: "answered",
     error: "",
+    position: { x: ROW, y: 0 },
     createdAt: T + 1,
     updatedAt: T + 1,
   },
@@ -53,6 +60,7 @@ export const fixtureNodes: Node[] = [
     followups: [],
     status: "answered",
     error: "",
+    position: { x: ROW * 2, y: 0 },
     createdAt: T + 2,
     updatedAt: T + 2,
   },
@@ -68,8 +76,8 @@ export const fixtureNodes: Node[] = [
     followups: [],
     status: "answered",
     error: "",
+    position: { x: ROW * 3, y: 0 },
     createdAt: T + 3,
     updatedAt: T + 3,
   },
 ];
-

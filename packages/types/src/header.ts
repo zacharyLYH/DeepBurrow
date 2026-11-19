@@ -33,13 +33,13 @@ const splitList = (value: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-export const parseSources = (value: string): Source[] =>
+const parseSources = (value: string): Source[] =>
   splitList(value).map((item) => {
     const [title, url = ""] = item.split(" — ");
     return { title: title.trim(), url: url.trim() };
   });
 
-// Last ask segment that is not preset or selection boilerplate, cut for a card title.
+// Last ask segment that is not selected-text boilerplate, cut for a card title.
 export const titleFromAsk = (ask: string) =>
   (
     ask
@@ -53,6 +53,17 @@ export const titleFromAsk = (ask: string) =>
 // One title rule for both sides of the wire: what the card shows is what gets saved.
 export const titleFromOrigin = (origin: Origin) =>
   titleFromAsk(origin.question) || origin.preset?.label || "New branch";
+
+// One prompt builder: the client stores the origin, the server derives the ask.
+export function buildAsk(origin: Origin) {
+  return [
+    origin.preset?.instruction,
+    origin.question.trim(),
+    origin.selectedText ? `Selected text: ${origin.selectedText}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 export function parseHeader(text: string): { meta: Meta; body: string } {
   const lines = text.split("\n");

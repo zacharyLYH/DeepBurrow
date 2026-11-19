@@ -1,80 +1,51 @@
 # DeepBurrow
-Cloud synced, BYOK, infinite canvas rabbitholing.
 
-# What
-Deep dives branch; chat bubbles can't. [rabbithole.ing](https://rabbithole.ing/about/) has the right shape but isn't web app first. We keep the UIUX and drift here:
+Cloud-synced, BYOK, web-first rabbitholing. Deep dives branch; chat bubbles can't.
 
-- Cloud sync
-- Editable system prompts
-- PWA, installable
-- Web app only; no MCP, no snapshots
-- Agents in backend; keys never in browser
-- BYO search
-- Question or file input; no markdown, no links
-- No `.rabbithole` export
+Reference UX: `~/Desktop/rabbithole` (vanilla JS + esbuild). We keep its feel and reimplement in React. This file states permanent product and architecture truths; current scope lives in `docs/mN.md`.
 
-# UX
-1. Login with email
-2. Setup: provider link, model, API key. Backend tests it as OpenAI-compatible. Only option.
-3. Ask a question or attach a file
-4. Backend agent researches, may loop
-5. Final answer streams back with sources; tool calls stay server side
-6. Branch: presets (Explain / ELI5 / Go deeper) are one prompt with different instruction text, editable. Context = lineage root→node, no siblings.
+## Product
 
-# UI spec
-Reference is vanilla JS + esbuild. We reimplement in React.
+- One infinite canvas of cards. Cards branch from a question or a selected passage.
+- Long answers scroll inside the card. No separate reader view.
+- Cloud sync, editable system prompts, installable PWA.
+- Web app only. No MCP, `.rabbithole` export, PNG/SVG, or share links.
+- Agents and keys stay server-side. BYO search.
+- Input is a plain-text question or a file; the composer does not parse Markdown or links.
+- Answers may render GFM, tables, code, KaTeX and Mermaid. Raw HTML is inert.
 
-Don't build: `@xyflow/react` (plane, edges, zoom), shadcn/ui (Popover, Command, Sheet, Sonner), `react-markdown` + remark/rehype + katex + mermaid. No tldraw/Excalidraw. Tree auto-tidy is ours, ~100 lines.
+## Flow
 
-- **One canvas.** Cards on a plane, parent→child edges. No separate reader view; long answers scroll inside the card.
+1. Sign in with email; connect an OpenAI-compatible provider (base URL, model, key). The backend verifies it.
+2. Ask a question or attach a file.
+3. The backend agent researches; tool calls never reach the browser.
+4. The answer streams into a card with title, sources and follow-ups.
+5. Branch from the answer or a selection. Context is the lineage root→node, never siblings.
+
+```mermaid
+flowchart LR
+  A[Ask or select text] --> B[Pending card]
+  B --> C[Answer + sources + follow-ups]
+  C --> D[Branch: preset, chip, drawer]
+  D --> B
+```
+
+## Canvas
+
 - **Entry.** Empty burrow = one composer → root card.
-- **Asking.** Select text → popover: input + 3 preset pills, keys 1–3 → selection highlighted, pending card beside source, edge drawn.
-- **Streaming.** Answer renders in-card. States: pending, streaming, answered, failed+retry.
-- **Follow-up.** Each answered card has a hover handle under it; clicking slides out a drawer with the same preset row. The body stays fully readable.
-- **⌘K.** Searches titles and ask text.
-- **Notes.** Margin note per card, human or agent, chip, fed to later prompts.
-- **Follow-up chips.** Content-specific questions from the answer; click fills the drawer, doesn't submit.
-- **Presets.** Settings: label + instruction, two sets, linkable.
-- **Sources.** Row under search-backed cards, parsed from the header.
-- **Errors.** Failed keeps card + reason + retry. Aborted keeps partial text.
-# Backend
-LangGraph. State machine, testable as data.
+- **Asking.** Select text → popover with input and preset pills (`1–3`). The child keeps the selected passage as its reference; the pending card sits beside its source.
+- **Card.** Fixed head strip, scrollable body, sources, follow-up chips and a discreet follow-up button.
+- **Notes.** One margin note per card, human or agent, fed to later prompts.
+- **Presets.** Label + instruction, two sets (selection, follow-up), linkable.
+- **⌘K.** Search titles, origin questions and answers; run canvas commands.
+- **Canvas.** Drag; cards size to their content. Positions and the camera live on the server, so a reload lands where you left it.
+- **Edit.** Rename inline; delete a branch and undo.
+- **Export.** Download the rendered canvas as a standalone HTML document; text stays selectable and links work without the app. A small inline script adds theme, text-size, zoom, and image-lightbox controls; the page remains readable with JS off.
+- **States.** `pending → answered | stopped | failed`. Failure keeps a reason and Retry; stopping keeps partial text.
 
-```ts
-type State = { burrowId; nodeId; lineage; ask: string; suggestedQuestions: string[]; round: number; queries: string[]; searchRaw: string; notes: string; answer; title; sources; followups; error };
-```
+## Answer contract
 
-```
-plan → (suggested questions? search → compose → judge → suggested questions?) → summarize → END
-```
-
-- `plan` → `suggestedQuestions`. Trigger-happy: weak reason to research is enough. URL in ask = one suggested question, verbatim. No search config → no suggested questions.
-- `search` → one call per round, queries from top suggested question, `searchRaw` = stringified response. Failure → `""`.
-- `compose` → notes from lineage + ask + `searchRaw`, appended to `notes`. No header.
-- `judge` → resolves/adds suggested questions, sets `done`. Small JSON.
-- `summarize` → lineage + ask + `notes` + suggested questions → header, returns `{title, answer, sources, followups}`.
-
-Nodes are `(state) => state`, no I/O. Model, search, DB, stream are adapters at the edge. Replay a state, same result. System prompt rebuilt every call — we persist completions only.
-
-`ask` is the final text from FE; presets applied client-side, backend never knows which fired. Node ids are server-minted on create; the FE adopts the id from the first stream event, and retries reuse it.
-
-# Loop rules
-Only `summarize` writes user-visible text; everything before is notes. Stop when any fires:
-
-1. `judge` says done
-2. 3 rounds
-
-"No new URL this round" arrives with search in M6. There is no token cap: a hard budget would cut an answer mid-thought, and the stop conditions already bound the work.
-
-Log per round `{suggestedQuestion, queries, newUrls, tokens, verdict}`. `tokens` is an output estimate (chars / 4), kept for tuning, never enforced. 3 rounds ≈ 6 calls, so show suggested questions as progress lines in the pending card — questions only, no round numbers in the UI.
-
-# Search
-Off until configured.
-
-Request: pasted curl — method, URL, headers, body, `{{query}}`. Response: not typed, stringified into `compose`, capped ~20k, labeled untrusted. Only URLs present verbatim in the blob may be cited.
-
-# Header
-Header, not tail. A tail can't be parsed while streaming.
+The header arrives before the body, so it can be parsed while streaming:
 
 ```
 TITLE: TCP congestion control
@@ -82,40 +53,54 @@ SOURCES: Nagle — https://x | RFC 5681 — https://y
 FOLLOWUPS: Why does slow start double per RTT? | When does CUBIC beat Reno?
 ```
 
-Parsed before the first body token, stripped, body streams untouched. Sources = what the model used, subset, each checked against the blob. Followups = leftover suggested questions or loose ends, 2–3.
+Parse it, strip it, stream the rest untouched. Sources are what the model used, each checked against the search blob. Follow-ups are 2–3 questions.
 
-# Data
-SQLite via `node:sqlite` (`DatabaseSync`), raw SQL, no ORM. Lineage = recursive CTE up `parent_id`.
+Answers are stored as Markdown. Render with CommonMark/GFM (`react-markdown` + `remark-gfm`), KaTeX, Mermaid and `highlight.js`. Never enable raw HTML.
 
-```sql
-users(id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL,
-  base_url TEXT, model TEXT, api_key_enc BLOB, verified_at INTEGER,
-  search TEXT NOT NULL DEFAULT '{}');  -- json: curl + key_enc + timeout
+## Agent
 
-burrows(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+LangGraph state machine. Nodes are pure `state → state`; model, search, DB and stream are adapters at the edge. Replaying a state gives the same result. Prompts are rebuilt each call; we persist completions only.
 
-nodes(id TEXT PRIMARY KEY, burrow_id TEXT NOT NULL REFERENCES burrows(id) ON DELETE CASCADE,
-  parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
-  title TEXT NOT NULL, markdown TEXT NOT NULL DEFAULT '',
-  origin TEXT NOT NULL,                -- json: selected_text, question, preset{label,instruction}, anchor
-  sources TEXT NOT NULL DEFAULT '[]', followups TEXT NOT NULL DEFAULT '[]',
-  progress TEXT NOT NULL DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'pending',
-  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-
-CREATE INDEX nodes_by_burrow ON nodes(burrow_id, parent_id);
+```
+plan → search? → compose → judge → search? → summarize → END
 ```
 
-`origin` is UI provenance only; prompts come from `markdown` + lineage.
+- Only `summarize` writes user-visible text; everything before is notes.
+- Stop when `judge` says done, or after 3 rounds. No token cap.
+- Search is a pasted curl: one call per round, ~20k cap, labeled untrusted. Only URLs present verbatim in the blob may be cited.
+- `ask` is the final text from the FE. Presets are applied client-side; the backend never knows which fired.
 
-# Stack
-Fullstack TS + React.
+## Data
 
-- FE: React 19 + React Compiler, Vite, Tailwind, shadcn/ui, `@xyflow/react`, TanStack Query. Mobile-first.
+SQLite via `node:sqlite`, raw SQL, no ORM. Lineage is the node parent chain.
+
+```
+users(id, email, base_url, model, api_key_enc, search)
+burrows(id, user_id, title)
+nodes(id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, canvas, deleted_at)
+```
+
+`origin` is UI provenance only; prompts come from `markdown` + lineage. Canvas state and soft-delete live on the node.
+
+## Stack
+
+- FE: React, Vite, Tailwind, shadcn/ui, `@xyflow/react`.
 - BE: Hono on Node, LangGraph.js, `node:sqlite`, SSE.
-- Shared `types` package for state, node, event shapes.
-- PWA day one: `vite-plugin-pwa`. Generation finishes while tab hidden → service worker Notification, tap focuses that node.
+- Shared `types` for state, nodes and events. Docker Compose; nginx serves the build and proxies `/api/`.
 
-# Deploy
-Docker Compose. nginx serves the web build on `:9994`, proxies `/api/` → `api:8787`. SQLite lives in named volume `db` at `/data/deepburrow.db`.
+## Scope rule
+
+```mermaid
+flowchart TD
+  A[New capability] --> B{Deepens a branch<br/>on the canvas?}
+  B -- no --> X[Not in scope]
+  B -- yes --> C{Needs a separate<br/>reader mode?}
+  C -- yes --> X
+  C -- no --> D{Needs secrets, model,<br/>search or shared data?}
+  D -- yes --> E[Backend agent]
+  D -- no --> F[Canvas UI]
+  E --> G{Visible while it runs?}
+  G -- yes --> H[Stream over the event contract]
+  G -- no --> I[Persist, then render]
+  F --> J[Card / popover / drawer / canvas]
+```

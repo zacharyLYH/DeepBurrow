@@ -37,7 +37,6 @@ const startAsk = async (ask: string) => {
   const before = new Set((await burrowNodes()).map((node) => node.id));
   const response = await post("/ask", {
     parentId: "node_root",
-    ask,
     origin: { question: ask },
   });
   const node = (await burrowNodes()).find((item) => !before.has(item.id));
@@ -69,7 +68,6 @@ const eachEvent = async (response: Response, onEvent: (event: Event) => Promise<
 test("real server streams ordered events and persists the answer", async () => {
   const response = await post("/ask", {
     parentId: "node_root",
-    ask: "Why double per RTT?",
     origin: { question: "Why double per RTT?" },
   });
   expect(response.headers.get("content-type")).toContain("text/event-stream");
@@ -121,7 +119,6 @@ test("real server streams ordered events and persists the answer", async () => {
 test("a pending row exists mid-run and settles when the run ends", async () => {
   const response = await post("/ask", {
     parentId: "node_root",
-    ask: "When does the row land?",
     origin: { question: "When does the row land?" },
   });
 
@@ -159,7 +156,6 @@ test("a second client attaches to a running node without a second run", async ()
 test("attaching to a settled node replays its terminal node", async () => {
   const response = await post("/ask", {
     parentId: "node_root",
-    ask: "Replay after the fact?",
     origin: { question: "Replay after the fact?" },
   });
   const events = parseStream(await response.text());
@@ -194,5 +190,18 @@ test("cancelling an unknown node is a no-op", async () => {
 });
 
 test("real server rejects an empty ask", async () => {
-  expect((await post("/ask", { ask: "  " })).status).toBe(400);
+  expect((await post("/ask", { origin: { question: "  " } })).status).toBe(400);
+});
+
+test("an answer with no text settles failed, keeps meta, and emits no tokens", async () => {
+  const { response } = await startAsk("zzempty");
+  const events = parseStream(await response.text());
+  const done = events.at(-1);
+  if (done?.type !== "node.error") throw new Error("no terminal event");
+
+  expect(done.node.status).toBe("failed");
+  expect(done.node.error).toBe("Empty answer");
+  expect(done.node.markdown).toBe("");
+  expect(done.node.sources.length).toBeGreaterThan(0);
+  expect(events.some((event) => event.type === "node.token")).toBe(false);
 });

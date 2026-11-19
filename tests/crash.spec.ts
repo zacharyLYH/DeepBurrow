@@ -49,7 +49,6 @@ test("a crashed run is settled when a client reattaches", async () => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       parentId: "node_root",
-      ask: "Does a crash leave a card?",
       origin: { question: "Does a crash leave a card?" },
     }),
   });

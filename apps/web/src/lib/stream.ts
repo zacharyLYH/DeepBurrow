@@ -4,7 +4,6 @@ import type { Event, Origin } from "@deepburrow/types";
 export type AskInput = {
   nodeId?: string;
   parentId: string | null;
-  ask: string;
   origin: Origin;
 };
 

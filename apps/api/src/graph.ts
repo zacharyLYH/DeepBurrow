@@ -10,10 +10,6 @@ export type GraphChunk =
 
 const MAX_ROUNDS = 3;
 
-// No adapter dependency: a completion costs about four characters per token.
-// The estimate feeds the round log only; nothing caps on it.
-const estimate = (text: string) => Math.ceil(text.length / 4);
-
 const State = Annotation.Root({
   nodeId: Annotation<string>,
   ask: Annotation<string>,
@@ -23,7 +19,6 @@ const State = Annotation.Root({
   round: Annotation<number>({ reducer: (_prev, next) => next, default: () => 0 }),
   done: Annotation<boolean>({ reducer: (_prev, next) => next, default: () => false }),
   notes: Annotation<string>({ reducer: (prev, next) => prev + next, default: () => "" }),
-  tokens: Annotation<number>({ reducer: (prev, next) => prev + next, default: () => 0 }),
 });
 
 type GraphState = typeof State.State;
@@ -71,7 +66,6 @@ const plan = (model: Model) => async (state: GraphState, config: LangGraphRunnab
   return {
     suggestedQuestions: parsePlan(raw),
     round: 1,
-    tokens: estimate(raw),
   };
 };
 
@@ -90,7 +84,6 @@ const compose = (model: Model) => async (state: GraphState, config: LangGraphRun
     notes: raw,
     openQuestion,
     suggestedQuestions: state.suggestedQuestions.slice(1),
-    tokens: estimate(raw),
   };
 };
 
@@ -107,21 +100,9 @@ const judge = (model: Model) => async (state: GraphState, config: LangGraphRunna
   const verdict = parseVerdict(raw);
   if (verdict.done) progress(config, "Enough gathered.");
 
-  // Rounds stay in the log, where they are useful; the UI only needs the work.
-  console.log(
-    JSON.stringify({
-      nodeId: state.nodeId,
-      round: state.round,
-      openQuestion: state.openQuestion,
-      tokens: state.tokens + estimate(raw),
-      verdict: verdict.done ? "done" : "continue",
-    }),
-  );
-
   return {
     done: verdict.done,
     suggestedQuestions: [...state.suggestedQuestions, ...verdict.suggestedQuestions],
-    tokens: estimate(raw),
     round: state.round + 1,
   };
 };

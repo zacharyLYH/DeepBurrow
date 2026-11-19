@@ -9,7 +9,7 @@ const graph = buildGraph(fakeModel());
 const TOKEN_PACE_MS = Number(process.env.FAKE_PACE_MS ?? 18);
 const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 120_000);
 
-export type Subscriber = (event: Event) => Promise<void>;
+type Subscriber = (event: Event) => Promise<void>;
 
 export type Run = {
   nodeId: string;
@@ -39,7 +39,9 @@ async function execute(run: Run, node: Node, ask: string) {
   let answer = "";
 
   try {
-    await broadcast(run, { nodeId: node.id, type: "node.pending" });
+    // The first event carries the stored row, so the client never guesses at
+    // placement, title or defaults.
+    await broadcast(run, { nodeId: node.id, type: "node.pending", node });
 
     const events = await graph.stream(
       { nodeId: node.id, ask, lineage: node.parentId ? lineage(node.parentId) : "" },
@@ -61,6 +63,10 @@ async function execute(run: Run, node: Node, ask: string) {
         await new Promise((resolve) => setTimeout(resolve, TOKEN_PACE_MS));
       }
     }
+
+    // An answer with no text is a failed run, not an empty card: retry is the
+    // only way forward, and the stored meta (title, sources) is kept.
+    if (!answer.trim()) throw new Error("Empty answer");
 
     save(node, { ...meta, markdown: answer, status: "answered", error: "" });
   } catch (cause) {

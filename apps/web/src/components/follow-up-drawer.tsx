@@ -2,7 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import type { Node as BurrowNode, Preset } from "@deepburrow/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { PRESETS } from "@/lib/presets";
+import { presetFromKey } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 const MAX_INPUT_HEIGHT = 90;
@@ -18,6 +18,7 @@ function autoGrow(textarea: HTMLTextAreaElement | null) {
 
 type FollowUpDrawerProps = {
   item: BurrowNode;
+  presets: Preset[];
   text: string;
   onTextChange: (text: string) => void;
   open: boolean;
@@ -28,6 +29,7 @@ type FollowUpDrawerProps = {
 
 export function FollowUpDrawer({
   item,
+  presets,
   text,
   onTextChange,
   open,
@@ -80,6 +82,12 @@ export function FollowUpDrawer({
                 event.preventDefault();
                 submit();
               }
+              // Digits pick a preset only when the box is empty, so numbers type.
+              const preset = presetFromKey(event.key, text, presets);
+              if (preset) {
+                event.preventDefault();
+                submit(preset);
+              }
             }}
             onBlur={() => {
               if (!text.trim() && !card.current?.matches(":hover")) onOpenChange(false);
@@ -88,9 +96,15 @@ export function FollowUpDrawer({
             className="min-h-0 resize-none rounded-none border-0 bg-transparent px-2 py-1 text-sm leading-snug shadow-none focus-visible:ring-0"
           />
           <div className="mt-1 flex gap-1">
-            {PRESETS.map((preset) => (
-              <Button key={preset.label} size="xs" variant="ghost" onClick={() => submit(preset)}>
-                {preset.label}
+            {presets.map((preset, index) => (
+              <Button
+                key={`${preset.label}-${index}`}
+                data-testid={`drawer-preset-${item.id}-${index}`}
+                size="xs"
+                variant="ghost"
+                onClick={() => submit(preset)}
+              >
+                {index + 1} {preset.label}
               </Button>
             ))}
           </div>

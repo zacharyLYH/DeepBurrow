@@ -6,13 +6,15 @@ CREATE TABLE IF NOT EXISTS users (
   model TEXT,
   api_key_enc BLOB,
   verified_at INTEGER,
-  search TEXT NOT NULL DEFAULT '{}'
+  search TEXT NOT NULL DEFAULT '{}',
+  settings TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS burrows (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
+  viewport TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -28,8 +30,12 @@ CREATE TABLE IF NOT EXISTS nodes (
   followups TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'pending',
   error TEXT NOT NULL DEFAULT '',
+  position_x REAL NOT NULL DEFAULT 0,
+  position_y REAL NOT NULL DEFAULT 0,
+  deleted_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS nodes_by_burrow ON nodes(burrow_id, parent_id);
+CREATE INDEX IF NOT EXISTS nodes_by_delete ON nodes(deleted_at);

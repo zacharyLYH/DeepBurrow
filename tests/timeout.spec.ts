@@ -45,7 +45,6 @@ test("a run that outlives its deadline settles failed", async () => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       parentId: "node_root",
-      ask: "Will this ever finish?",
       origin: { question: "Will this ever finish?" },
     }),
   });

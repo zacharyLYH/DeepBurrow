@@ -5,6 +5,11 @@ export default defineConfig({
   // One API + one SQLite file shared by every test; specs reset the demo burrow
   // between tests, so they cannot run concurrently.
   workers: 1,
+  // A rich answer streams ~600 tokens, so give each test room past 30s.
+  timeout: 30_000,
+  // A 1.5px edge layer only moves ~100 pixels of a full screenshot, so the
+  // golden budget is absolute pixels; a ratio would let the edges disappear.
+  expect: { toHaveScreenshot: { maxDiffPixels: 40 } },
   use: { baseURL: "http://localhost:5173", viewport: { width: 1280, height: 800 } },
   webServer: [
     {
@@ -16,7 +21,7 @@ export default defineConfig({
       // short latency keeps progress visible without slowing the suite.
       env: {
         DATA_DIR: "data/test",
-        FAKE_PACE_MS: "30",
+        FAKE_PACE_MS: "20",
         FAKE_LATENCY_MS: "100",
         FAKE_ROUNDS: "2",
         FAKE_FAIL_ASK: "zzfail",

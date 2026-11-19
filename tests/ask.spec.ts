@@ -1,42 +1,25 @@
 import { devices, expect, test, type Page } from "@playwright/test";
 import { fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow } from "./db.ts";
-
-const rootId = fixtureNodes[0].id;
-const baseCount = fixtureNodes.length;
-
-const open = async (page: Page) => {
-  await page.goto("/");
-  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount);
-  await page.waitForTimeout(200);
-};
+import {
+  ask,
+  baseCount,
+  jump,
+  mutatedCards,
+  open,
+  openDrawer,
+  rootId,
+  watchCards,
+} from "./helpers.ts";
 
 const settle = (page: Page) => page.waitForTimeout(350);
-
-const openDrawer = async (page: Page, card: ReturnType<Page["getByTestId"]>) => {
-  const handle = card.locator('[data-testid^="drawer-handle-"]');
-  await card.hover();
-  await handle.click();
-  const input = card.locator('[data-testid^="drawer-input-"]');
-  await expect(input).toBeVisible();
-  return input;
-};
-
-const ask = async (page: Page, text: string) => {
-  const input = await openDrawer(page, page.getByTestId(`card-${rootId}`));
-  await input.fill(text);
-  await input.press("Enter");
-  await expect(page.locator(".react-flow__node")).toHaveCount(baseCount + 1);
-  const id = await page.locator('[data-testid^="card-"]').last().getAttribute("data-testid");
-  if (!id) throw new Error("no card id");
-  return page.getByTestId(id);
-};
 
 test.beforeEach(() => resetDemoBurrow());
 
 test("meta lands early, tokens grow, and the header never leaks", async ({ page }) => {
   await open(page);
   const card = await ask(page, "What is additive increase?");
+  await watchCards(page);
   await expect(card).toHaveAttribute("data-status", "pending");
 
   await expect(card.locator('[data-testid^="sources-"]')).toBeVisible();
@@ -46,7 +29,7 @@ test("meta lands early, tokens grow, and the header never leaks", async ({ page 
   expect(text).not.toContain("SOURCES:");
   expect(text).not.toContain("FOLLOWUPS:");
 
-  const body = card.locator('[data-slot="card-content"] p.whitespace-pre-wrap');
+  const body = card.locator('[data-testid^="body-"] .db-markdown');
   await expect(body).not.toHaveText("", { timeout: 5000 });
   const first = (await body.innerText()).trim();
   await page.waitForTimeout(150);
@@ -56,6 +39,10 @@ test("meta lands early, tokens grow, and the header never leaks", async ({ page 
 
   await expect(card).toHaveAttribute("data-status", "answered", { timeout: 15000 });
   await expect(card.getByText("RFC 5681")).toBeVisible();
+
+  // Streaming repaints the answering card only; the other cards stay untouched.
+  const streamed = (await card.getAttribute("data-testid"))!.replace("card-", "");
+  expect(await mutatedCards(page)).toEqual([streamed]);
 });
 
 test("progress lines show work, never round numbers, then clear when text streams", async ({ page }) => {
@@ -93,17 +80,16 @@ test("stop keeps partial text, hides retry, and survives reload", async ({ page 
   const card = await ask(page, title);
   await expect(card).toHaveAttribute("data-status", "pending");
   // Let a few tokens land so there is partial text to keep.
-  await expect(card.locator('[data-slot="card-content"] p.whitespace-pre-wrap')).not.toHaveText(
-    "",
-    { timeout: 5000 },
-  );
+  await expect(card.locator('[data-testid^="body-"] .db-markdown')).not.toHaveText("", {
+    timeout: 5000,
+  });
 
   await card.locator('[data-testid^="stop-"]').click();
   await expect(card).toHaveAttribute("data-status", "stopped");
   const partial = (await card.locator('[data-slot="card-content"]').innerText()).trim();
   expect(partial.length).toBeGreaterThan(0);
   await expect(card.locator('[data-testid^="retry-"]')).toHaveCount(0);
-  await expect(await openDrawer(page, card)).toBeVisible();
+  await expect(await openDrawer(card)).toBeVisible();
 
   await page.reload();
   const reloaded = page.locator('[data-testid^="card-"]').filter({ hasText: title }).first();
@@ -118,7 +104,7 @@ test("stop before any token settles stopped", async ({ page }) => {
 
   await card.locator('[data-testid^="stop-"]').click();
   await expect(card).toHaveAttribute("data-status", "stopped");
-  await expect(card.locator('[data-slot="card-content"] p.whitespace-pre-wrap')).toHaveText("");
+  await expect(card.locator('[data-testid^="body-"]')).toHaveText("");
 });
 
 test("reloading during research reattaches and finishes", async ({ page }) => {
@@ -155,7 +141,7 @@ test("load failure offers retry", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByText("Couldn't load the burrow.")).toBeVisible();
-  await expect(page).toHaveScreenshot("load-error.png", { maxDiffPixelRatio: 0.01 });
+  await expect(page).toHaveScreenshot("load-error.png");
 
   failing = false;
   await page.getByRole("button", { name: "Retry" }).click();
@@ -207,7 +193,7 @@ test("follow-up drawer sits below the card, body stays readable", async ({ page 
   if (!cardBox || !handleBox) throw new Error("missing box");
   expect(handleBox.y).toBeGreaterThanOrEqual(cardBox.y + cardBox.height);
 
-  await openDrawer(page, card);
+  await openDrawer(card);
   await settle(page);
   const inputBox = await card.locator('[data-testid^="drawer-input-"]').boundingBox();
   if (!inputBox) throw new Error("missing input box");
@@ -240,11 +226,11 @@ test("stable answered card", async ({ page }) => {
   await open(page);
   const card = await ask(page, "What is CUBIC?");
   await expect(card).toHaveAttribute("data-status", "answered", { timeout: 10000 });
-  await openDrawer(page, card);
+  await openDrawer(card);
   await settle(page);
-  await expect(page.getByTestId("canvas")).toHaveScreenshot("answered-card.png", {
-    maxDiffPixelRatio: 0.01,
-  });
+  // Settling must not drop the edge layer: one edge per non-root card.
+  await expect(page.locator(".react-flow__edge")).toHaveCount(baseCount);
+  await expect(page.getByTestId("canvas")).toHaveScreenshot("answered-card.png");
 });
 
 test("reload keeps answered cards and does not reattach", async ({ page }) => {
@@ -275,14 +261,32 @@ const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];
 test.describe("mobile", () => {
   test.use(iphone13);
 
-  test("stable answered card", async ({ page }) => {
+  test("answered card and its drawer fit the phone", async ({ page }) => {
     await open(page);
     const card = await ask(page, "What is CUBIC?");
     await expect(card).toHaveAttribute("data-status", "answered", { timeout: 10000 });
-    await openDrawer(page, card);
+
+    // Re-center once the answer is settled: the camera first moves while the card
+    // is still streaming, so that framing shifts between runs. A palette jump
+    // uses the final measured size and makes the screenshot deterministic.
+    await jump(page, "What is CUBIC");
+    const input = await openDrawer(card);
+
     await settle(page);
-    await expect(page.getByTestId("canvas")).toHaveScreenshot("answered-card-mobile.png", {
-      maxDiffPixelRatio: 0.01,
-    });
+
+    const viewport = page.viewportSize()!;
+    const box = await card.boundingBox();
+    const drawer = await card.locator('[data-testid^="drawer-"]').first().boundingBox();
+    const body = await card.locator('[data-slot="card-content"]').boundingBox();
+    if (!box || !drawer || !body) throw new Error("missing box");
+
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(drawer.y).toBeGreaterThanOrEqual(box.y + box.height);
+    expect(drawer.y + drawer.height).toBeLessThanOrEqual(viewport.height);
+    expect(body.height).toBeGreaterThan(60);
+    await expect(input).toBeFocused();
+
+    await expect(page.getByTestId("canvas")).toHaveScreenshot("answered-card-mobile.png");
   });
 });

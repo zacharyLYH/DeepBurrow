@@ -23,6 +23,54 @@ const SOURCES: Source[] = [
 
 const SEED_QUESTIONS = ["Why double per RTT?", "When does CUBIC win?"];
 
+// Test seam: this keyword makes summarize emit every renderer block at once. The
+// browser never sends it; M7's real prompt will.
+const RICH_ASK = "zzmd";
+
+// Test seam: this keyword makes summarize return nothing, so the empty-answer
+// path is exercised for real. The browser never sends it.
+const EMPTY_ASK = "zzempty";
+
+const RICH_BODY = [
+  "## Signals",
+  "",
+  "Congestion shows up three ways:",
+  "",
+  "- loss",
+  "- delay",
+  "- explicit marks",
+  "",
+  "| signal | cost |",
+  "| --- | --- |",
+  "| loss | late |",
+  "| delay | noisy |",
+  "",
+  "- [x] probe the pipe",
+  "- [ ] back off",
+  "",
+  "~~dropped~~ and `inline code` and [a link](https://example.com/read).",
+  "",
+  "```js",
+  "const window = min(cwnd, rwnd);",
+  "```",
+  "",
+  "Inline math $a^2 + b^2 = c^2$ and a block:",
+  "",
+  "$$",
+  "\\int_0^1 x^2 dx = \\frac{1}{3}",
+  "$$",
+  "",
+  "```mermaid",
+  "graph TD",
+  "  A[probe] --> B[grow]",
+  "  B --> C[loss]",
+  "```",
+  "",
+  "![diagram](/diagram.svg)",
+  "",
+  "<script>alert('xss')</script>",
+].join("\n");
+
 export type FakeOptions = {
   rounds?: number;
   verdict?: "done" | "continue";
@@ -66,6 +114,19 @@ export function fakeModel(options: FakeOptions = {}): Model {
       }
 
       const title = titleFromAsk(ask) || "Untitled";
+      if (ask.includes(EMPTY_ASK)) {
+        // Header only: the meta path is real, the answer body is empty.
+        return [
+          `TITLE: ${title}`,
+          `SOURCES: ${SOURCES.map((source) => `${source.title} — ${source.url}`).join(" | ")}`,
+          "",
+        ].join("\n");
+      }
+      if (ask.includes(RICH_ASK)) {
+        return [`TITLE: ${title}`, "SOURCES: RFC 5681 — https://www.rfc-editor.org/rfc/rfc5681", "", RICH_BODY].join(
+          "\n",
+        );
+      }
       return [
         `TITLE: ${title}`,
         `SOURCES: ${SOURCES.map((source) => `${source.title} — ${source.url}`).join(" | ")}`,
