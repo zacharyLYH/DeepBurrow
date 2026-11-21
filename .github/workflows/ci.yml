@@ -18,13 +18,13 @@ jobs:
     name: Lint, build, e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Pin Chromium, fonts and Node so screenshot drift comes from the app,
+    # not from runner-image updates. Local uses the same baselines.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
+      options: --ipc=host
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -34,9 +34,6 @@ jobs:
 
       - name: Build web
         run: npm run build
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
 
       # Boots the real API (:8787) and Vite (:5173) via playwright.config.ts.
       - name: End-to-end tests
@@ -59,6 +56,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+
+      - name: Generate a temporary auth secret
+        run: echo "AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Build and start the stack
         run: docker compose up -d --build

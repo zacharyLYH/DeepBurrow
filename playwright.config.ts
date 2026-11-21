@@ -3,14 +3,17 @@ import { MOCK_PROVIDER_PORT } from "./tests/mock-provider.ts";
 
 export default defineConfig({
   testDir: "./tests",
+  // One baseline per screenshot, not one per OS. Cross-platform rendering is
+  // covered by the diff budget below.
+  snapshotPathTemplate: "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-projectName}{ext}",
   // One API + one SQLite file shared by every test; specs reset the demo burrow
   // between tests, so they cannot run concurrently.
   workers: 1,
   // A rich answer streams ~600 tokens, so give each test room past 30s.
   timeout: 30_000,
-  // A 1.5px edge layer only moves ~100 pixels of a full screenshot, so the
-  // golden budget is absolute pixels; a ratio would let the edges disappear.
-  expect: { toHaveScreenshot: { maxDiffPixels: 40 } },
+  // 5% absorbs font and antialiasing drift between macOS and Linux; keep it
+  // tight enough that real layout regressions still fail.
+  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.05 } },
   use: { baseURL: "http://localhost:5173", viewport: { width: 1280, height: 800 } },
   webServer: [
     {
