@@ -1,13 +1,20 @@
+import { randomUUID } from "node:crypto";
 import type { Event, Meta, Node } from "../../../packages/types/src/types.ts";
 import { lineage, putNode } from "./db.ts";
 import { buildGraph, type GraphChunk } from "./graph.ts";
-import { fakeModel } from "./model.ts";
-
-const graph = buildGraph(fakeModel());
+import { agentProviders } from "./provider.ts";
 
 // View-layer pacing so tokens land one at a time like a real stream.
-const TOKEN_PACE_MS = Number(process.env.FAKE_PACE_MS ?? 18);
-const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 120_000);
+const TOKEN_PACE_MS = Number(process.env.TOKEN_PACE_MS ?? 18);
+// Eight minutes per run, search included; the graph enforces its own call limits.
+const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 480_000);
+// Keeps the lineage under a model's context window. Deterministic, tail first.
+const MAX_CONTEXT_CHARS = 24_000;
+
+const clip = (text: string) =>
+  text.length > MAX_CONTEXT_CHARS
+    ? `…earlier context trimmed…\n${text.slice(-MAX_CONTEXT_CHARS)}`
+    : text;
 
 type Subscriber = (event: Event) => Promise<void>;
 
@@ -44,8 +51,13 @@ async function execute(run: Run, node: Node, ask: string) {
     // placement, title or defaults.
     await broadcast(run, { nodeId: node.id, type: "node.pending", node });
 
+    const graph = buildGraph(agentProviders(run.userId));
     const events = await graph.stream(
-      { nodeId: node.id, ask, lineage: node.parentId ? lineage(run.userId, node.parentId) : "" },
+      {
+        ask,
+        sessionId: randomUUID(),
+        lineage: node.parentId ? clip(lineage(run.userId, node.parentId)) : "",
+      },
       { streamMode: "custom", signal: run.abort.signal },
     );
 

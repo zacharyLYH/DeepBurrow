@@ -50,11 +50,10 @@ The header arrives before the body, so it can be parsed while streaming:
 
 ```
 TITLE: TCP congestion control
-SOURCES: Nagle — https://x | RFC 5681 — https://y
 FOLLOWUPS: Why does slow start double per RTT? | When does CUBIC beat Reno?
 ```
 
-Parse it, strip it, stream the rest untouched. Sources are what the model used, each checked against the search blob. Follow-ups are 2–3 questions.
+Parse it, strip it, stream the rest untouched. Sources are not model output: the backend extracts every `https` URL from the raw search response, one entry per URL, titled by the URL. Follow-ups are 2–3 questions.
 
 Answers are stored as Markdown. Render with CommonMark/GFM (`react-markdown` + `remark-gfm`), KaTeX, Mermaid and `highlight.js`. Never enable raw HTML.
 
@@ -63,13 +62,15 @@ Answers are stored as Markdown. Render with CommonMark/GFM (`react-markdown` + `
 LangGraph state machine. Nodes are pure `state → state`; model, search, DB and stream are adapters at the edge. Replaying a state gives the same result. Prompts are rebuilt each call; we persist completions only.
 
 ```
-plan → search? → compose → judge → search? → summarize → END
+generate ⇄ search → validate ⇄ repair → stream
 ```
 
-- Only `summarize` writes user-visible text; everything before is notes.
-- Stop when `judge` says done, or after 3 rounds. No token cap.
-- Search is a pasted curl: one call per round, ~20k cap, labeled untrusted. Only URLs present verbatim in the blob may be cited.
-- `ask` is the final text from the FE. Presets are applied client-side; the backend never knows which fired.
+- `generate` seeds the system prompt, root→node transcript and frontend message, then offers `web_search` as a native tool when search is configured. The model answers directly or calls it with one query or URL; up to three search rounds.
+- `search` is one OpenAI-compatible call with its own endpoint, model and key. Its raw reply is evidence, never instructions, and returns as the tool result verbatim.
+- After a search round, `generate` continues with the assistant tool call and its result in the conversation; the frontend message stays unchanged.
+- `validate` runs the real KaTeX and Mermaid renderers plus link, header and fence checks before any token streams. At most two repairs; a usable body still answers, an empty one fails the node.
+- One session id per run rides every LLM call (`session_id` and `x-session-id`); search is outside it. Limits: 30s per call, 5 min per search, 8 min per run.
+- Provider errors surface verbatim; credentials never do. Keys are sealed with AES-GCM, endpoints are verified before save, and private addresses need an explicit dev opt-in.
 
 ## Data
 

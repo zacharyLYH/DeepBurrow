@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Preset } from "@deepburrow/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,6 +120,97 @@ function PresetEditor() {
   );
 }
 
+type ProviderStatus = { configured: boolean; baseUrl: string; model: string };
+type ProviderKind = "model" | "search";
+type ProviderField = "baseUrl" | "model" | "apiKey";
+
+const EMPTY_FORM: Record<ProviderField, string> = { baseUrl: "", model: "", apiKey: "" };
+const PROVIDER_FIELDS: {
+  key: ProviderField;
+  testId: string;
+  type: "url" | "text" | "password";
+  placeholder: string;
+}[] = [
+  { key: "baseUrl", testId: "base-url", type: "url", placeholder: "https://openrouter.ai/api/v1" },
+  { key: "model", testId: "model", type: "text", placeholder: "Model name" },
+  { key: "apiKey", testId: "api-key", type: "password", placeholder: "API key" },
+];
+
+// Model and search are separate providers: verify each with a small prompt,
+// then store it encrypted on the user row.
+function ProviderForm({
+  kind,
+  status,
+  onSaved,
+}: {
+  kind: ProviderKind;
+  status?: ProviderStatus;
+  onSaved: (status: ProviderStatus) => void;
+}) {
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const response = await apiFetch(`/api/settings/${kind}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        provider?: ProviderStatus;
+        error?: string;
+      };
+      if (!response.ok || !data.provider) {
+        setError(data.error ?? "Could not verify the endpoint");
+        return;
+      }
+      onSaved(data.provider);
+      setForm(EMPTY_FORM);
+    } catch {
+      setError("Could not reach the server");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-2">
+      <Row label="Status">
+        <span data-testid={`${kind}-status`} className="text-xs text-muted-foreground">
+          {status?.configured ? `Verified · ${status.model}` : "Not connected"}
+        </span>
+      </Row>
+      {PROVIDER_FIELDS.map((field) => (
+        <Input
+          key={field.key}
+          aria-label={`${kind} ${field.key}`}
+          data-testid={`${kind}-${field.testId}`}
+          type={field.type}
+          required
+          autoComplete={field.key === "apiKey" ? "off" : undefined}
+          placeholder={field.placeholder}
+          value={form[field.key]}
+          onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}
+          className="h-8 text-xs"
+        />
+      ))}
+      {error && (
+        <p data-testid={`${kind}-error`} role="alert" className="break-words text-xs text-destructive">
+          {error}
+        </p>
+      )}
+      <Button data-testid={`${kind}-save`} size="xs" variant="outline" disabled={busy}>
+        {busy ? "Verifying…" : "Verify & save"}
+      </Button>
+    </form>
+  );
+}
+
 function Account({
   email,
   onSignOut,
@@ -216,6 +307,18 @@ export function SettingsSheet({
   onSignOut: (notice?: string) => void;
 }) {
   const settings = useSettings();
+  const [providers, setProviders] = useState<Partial<Record<ProviderKind, ProviderStatus>>>({});
+
+  // One read per open, not one per form.
+  useEffect(() => {
+    if (!open) return;
+    void apiFetch("/api/settings")
+      .then((response) => response.json())
+      .then((data: Record<ProviderKind, ProviderStatus>) =>
+        setProviders({ model: data.model, search: data.search }),
+      )
+      .catch(() => undefined);
+  }, [open]);
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
@@ -284,6 +387,24 @@ export function SettingsSheet({
           <section>
             <h3>Asking</h3>
             <PresetEditor />
+          </section>
+
+          <section>
+            <h3>Model</h3>
+            <ProviderForm
+              kind="model"
+              status={providers.model}
+              onSaved={(next) => setProviders((current) => ({ ...current, model: next }))}
+            />
+          </section>
+
+          <section>
+            <h3>Search</h3>
+            <ProviderForm
+              kind="search"
+              status={providers.search}
+              onSaved={(next) => setProviders((current) => ({ ...current, search: next }))}
+            />
           </section>
 
           <section>

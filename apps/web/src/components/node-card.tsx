@@ -285,7 +285,12 @@ export const NodeCard = memo(function NodeCard({ data }: NodeProps<CardFlowNode>
               </Button>
             )}
             {status === "failed" && (
-              <Button data-testid={`retry-${item.id}`} size="xs" variant="ghost" onClick={() => data.onRetry(item.id)}>
+              <Button
+                data-testid={`retry-${item.id}`}
+                size="xs"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => data.onRetry(item.id)}
+              >
                 Retry
               </Button>
             )}

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { MOCK_PROVIDER_PORT } from "./tests/mock-provider.ts";
 
 export default defineConfig({
   testDir: "./tests",
@@ -16,17 +17,22 @@ export default defineConfig({
       command: "npm run api",
       url: "http://localhost:8787/health",
       reuseExistingServer: !process.env.CI,
-      // FAKE_FAIL_ASK lets a spec force a real model failure once, then retry clean.
-      // Two rounds so the loop and progress lines are real in the browser; the
-      // short latency keeps progress visible without slowing the suite.
+      // The mock provider lives on loopback, so the SSRF guard gets a dev bypass.
       env: {
         DATA_DIR: "data/test",
         APP_ORIGIN: "http://localhost:5173",
-        FAKE_PACE_MS: "20",
-        FAKE_LATENCY_MS: "100",
-        FAKE_ROUNDS: "2",
-        FAKE_FAIL_ASK: "zzfail",
+        TOKEN_PACE_MS: "20",
+        RUN_TIMEOUT_MS: process.env.RUN_TIMEOUT_MS ?? "6000",
+        ALLOW_PRIVATE_PROVIDERS: "1",
+        LLM_TIMEOUT_MS: process.env.LLM_TIMEOUT_MS ?? "2000",
       },
+    },
+    {
+      // All specs talk to this OpenAI-compatible server; the API has no fake model.
+      command: "node tests/mock-provider-server.ts",
+      url: `http://127.0.0.1:${MOCK_PROVIDER_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
+      env: { MOCK_LATENCY_MS: "500" },
     },
     {
       command: "npm run dev -w @deepburrow/web -- --port 5173 --strictPort",

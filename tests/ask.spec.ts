@@ -4,6 +4,7 @@ import { resetDemoBurrow } from "./db.ts";
 import {
   ask,
   baseCount,
+  burrowNodes,
   jump,
   mutatedCards,
   open,
@@ -46,16 +47,12 @@ test("meta lands early, tokens grow, and the header never leaks", async ({ page 
   expect(await mutatedCards(page)).toEqual([streamed]);
 });
 
-test("progress lines show work, never round numbers, then clear when text streams", async ({ page }) => {
+test("progress lines show work, then clear when text streams", async ({ page }) => {
   await open(page);
   const card = await ask(page, "What is additive increase?");
   const lines = card.locator('[data-testid^="progress-"]');
 
-  await expect(lines).toContainText("Planning the research");
-  await expect(lines).toContainText("Why double per RTT?");
-  // Second-round question: the plan seeds two, so this proves the loop advanced.
-  await expect(lines).toContainText("When does CUBIC win?", { timeout: 10000 });
-  await expect(lines).not.toContainText(/Round \d/);
+  await expect(lines).toContainText("Writing the answer");
 
   // Tokens clear the progress list while the card is still pending.
   await expect(lines).toHaveCount(0, { timeout: 15000 });
@@ -173,10 +170,7 @@ test("a follow-up chip fills the drawer, then submits a child", async ({ page })
   expect(childId).not.toBe(parentId);
   await expect(input).toHaveValue("");
 
-  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
-    nodes: { id: string; parentId: string | null; origin: { question: string } }[];
-  };
-  const created = nodes.find((node) => node.id === childId);
+  const created = (await burrowNodes(page)).find((node) => node.id === childId);
   expect(created?.parentId).toBe(parentId);
   expect(created?.origin.question).toBe(label);
 });

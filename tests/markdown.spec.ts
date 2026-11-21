@@ -7,7 +7,7 @@ test.beforeEach(() => resetDemoBurrow());
 
 const rich = async (page: import("@playwright/test").Page) => {
   await open(page);
-  // zzmd makes the fake model emit every renderer block (model.ts).
+  // zzmd makes the HTTP mock provider emit every renderer block.
   const card = await ask(page, "zzmd render everything");
   await expect(card).toHaveAttribute("data-status", "answered", { timeout: 20000 });
   return card;

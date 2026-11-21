@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { CARD_WIDTH } from "../packages/types/src/layout.ts";
 import { readNodeRow, readViewport, resetDemoBurrow } from "./db.ts";
-import { card, drag, head, open, rootId, signInContext, viewportMatrix } from "./helpers.ts";
+import { ask, card, drag, head, open, rootId, signInContext, viewportMatrix } from "./helpers.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -37,6 +39,22 @@ test("a drag writes flow coordinates that stay put across reloads", async ({ pag
   // Still static on the second load: no drift beyond the node re-measure.
   expect(Math.abs(again!.x - reloaded.x)).toBeLessThan(4);
   expect(Math.abs(again!.y - reloaded.y)).toBeLessThan(4);
+});
+
+test("a new card appends past the row instead of covering a sibling", async ({ page }) => {
+  await open(page);
+  const child = await ask(page, "What comes next?");
+  const id = (await child.getAttribute("data-testid"))!.replace("card-", "");
+  const row = readNodeRow(id)!;
+  const rightmost = Math.max(...fixtureNodes.map((node) => node.position.x));
+
+  expect(row.position_x).toBeGreaterThan(rightmost);
+  expect(row.position_y).toBe(0);
+  for (const node of fixtureNodes) {
+    const overlaps = Math.abs(node.position.y - row.position_y) < 1 &&
+      Math.abs(node.position.x - row.position_x) < CARD_WIDTH;
+    expect(overlaps).toBe(false);
+  }
 });
 
 test("the shared camera is written on move end and restored verbatim", async ({ page }) => {

@@ -1,80 +1,31 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { parseEvent } from "../packages/types/src/header.ts";
 import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
-import type { Event, Node as BurrowNode } from "../packages/types/src/types.ts";
-import { demoCookie } from "./api-auth.ts";
-import { seedDemo } from "./seed.ts";
-import { parseEvents } from "./stream.ts";
+import { parseEvents, readEventStream } from "../packages/types/src/sse.ts";
+import type { Node as BurrowNode } from "../packages/types/src/types.ts";
+import { testApp, type TestApp } from "./app-harness.ts";
 
-let app: typeof import("../apps/api/src/server.ts")["app"];
-let cookie = "";
+let api: TestApp;
 
 test.beforeAll(async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "deepburrow-"));
-  process.env.DATA_DIR = dataDir;
-  seedDemo(dataDir);
-  ({ app } = await import("../apps/api/src/server.ts"));
-  cookie = await demoCookie(app);
+  api = await testApp("deepburrow-server-");
 });
-
-const call = (path: string, init: RequestInit = {}) =>
-  app.fetch(
-    new Request(`http://api${path}`, {
-      ...init,
-      headers: { cookie, ...(init.headers as Record<string, string> | undefined) },
-    }),
-  );
-
-const post = (path: string, body: unknown) =>
-  call(path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-const burrowNodes = async () =>
-  ((await (await call(`/burrows/${fixtureBurrow.id}`)).json()) as {
-    nodes: BurrowNode[];
-  }).nodes;
 
 // Starts an ask and returns the still-open response plus the pending node id.
 const startAsk = async (ask: string) => {
-  const before = new Set((await burrowNodes()).map((node) => node.id));
-  const response = await post("/ask", {
+  const before = new Set((await api.nodes()).map((node) => node.id));
+  const response = await api.post("/ask", {
     parentId: "node_root",
     origin: { question: ask },
   });
-  const node = (await burrowNodes()).find((item) => !before.has(item.id));
+  const node = (await api.nodes()).find((item) => !before.has(item.id));
   if (!node) throw new Error("no pending node");
   return { response, nodeId: node.id };
 };
 
-const stream = (nodeId: string) =>
-  call(`/nodes/${nodeId}/stream`);
-
-// Reads the SSE body one event at a time, so the caller can observe the server
-// mid-run. Hono's writer backpressures, so the run cannot race ahead unseen.
-const eachEvent = async (response: Response, onEvent: (event: Event) => Promise<void>) => {
-  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buffer += value;
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      const line = frame.split("\n").find((item) => item.startsWith("data: "));
-      if (line) await onEvent(parseEvent(JSON.parse(line.slice(6))) as Event);
-    }
-  }
-};
+const stream = (nodeId: string) => api.call(`/nodes/${nodeId}/stream`);
 
 test("real server streams ordered events and persists the answer", async () => {
-  const response = await post("/ask", {
+  const response = await api.post("/ask", {
     parentId: "node_root",
     origin: { question: "Why double per RTT?" },
   });
@@ -89,7 +40,7 @@ test("real server streams ordered events and persists the answer", async () => {
   expect(events.every((event) => event.nodeId === nodeId)).toBe(true);
 
   const progress = events.flatMap((event) => (event.type === "node.progress" ? [event.line] : []));
-  expect(progress[0]).toBe("Planning the research…");
+  expect(progress[0]).toBe("Writing the answer…");
 
   const metaAt = events.findIndex((event) => event.type === "node.meta");
   const firstTokenAt = events.findIndex((event) => event.type === "node.token");
@@ -108,7 +59,7 @@ test("real server streams ordered events and persists the answer", async () => {
   expect(body).not.toContain("TITLE:");
   expect(body).not.toContain("SOURCES:");
 
-  const burrow = (await (await call(`/burrows/${fixtureBurrow.id}`)).json()) as {
+  const burrow = (await (await api.call(`/burrows/${fixtureBurrow.id}`)).json()) as {
     nodes: BurrowNode[];
   };
   const saved = burrow.nodes.find((node) => node.id === nodeId);
@@ -125,23 +76,23 @@ test("real server streams ordered events and persists the answer", async () => {
 });
 
 test("a pending row exists mid-run and settles when the run ends", async () => {
-  const response = await post("/ask", {
+  const response = await api.post("/ask", {
     parentId: "node_root",
     origin: { question: "When does the row land?" },
   });
 
   let nodeId = "";
   let sawPending = false;
-  await eachEvent(response, async (event) => {
+  await readEventStream(response.body!, async (event) => {
     nodeId ||= event.nodeId;
     if (event.type !== "node.pending") return;
-    const saved = (await burrowNodes()).find((node) => node.id === nodeId);
+    const saved = (await api.nodes()).find((node) => node.id === nodeId);
     expect(saved?.status).toBe("pending");
     sawPending = true;
   });
 
   expect(sawPending).toBe(true);
-  expect((await burrowNodes()).find((node) => node.id === nodeId)?.status).toBe("answered");
+  expect((await api.nodes()).find((node) => node.id === nodeId)?.status).toBe("answered");
 });
 
 test("a second client attaches to a running node without a second run", async () => {
@@ -158,11 +109,11 @@ test("a second client attaches to a running node without a second run", async ()
   expect(attached.some((event) => event.type === "node.token")).toBe(true);
 
   await started;
-  expect((await burrowNodes()).filter((node) => node.id === nodeId)).toHaveLength(1);
+  expect((await api.nodes()).filter((node) => node.id === nodeId)).toHaveLength(1);
 });
 
 test("attaching to a settled node replays its terminal node", async () => {
-  const response = await post("/ask", {
+  const response = await api.post("/ask", {
     parentId: "node_root",
     origin: { question: "Replay after the fact?" },
   });
@@ -184,19 +135,19 @@ test("attaching to an unknown node is 404", async () => {
 test("cancelling a run settles the node stopped", async () => {
   const { response, nodeId } = await startAsk("Cancel me?");
   const started = response.text();
-  await call(`/nodes/${nodeId}/cancel`, { method: "POST" });
+  await api.call(`/nodes/${nodeId}/cancel`, { method: "POST" });
   await started;
 
-  expect((await burrowNodes()).find((node) => node.id === nodeId)?.status).toBe("stopped");
+  expect((await api.nodes()).find((node) => node.id === nodeId)?.status).toBe("stopped");
 });
 
 test("cancelling an unknown node is not found", async () => {
-  const response = await call("/nodes/nope/cancel", { method: "POST" });
+  const response = await api.call("/nodes/nope/cancel", { method: "POST" });
   expect(response.status).toBe(404);
 });
 
 test("real server rejects an empty ask", async () => {
-  expect((await post("/ask", { origin: { question: "  " } })).status).toBe(400);
+  expect((await api.post("/ask", { origin: { question: "  " } })).status).toBe(400);
 });
 
 test("an answer with no text settles failed, keeps meta, and emits no tokens", async () => {

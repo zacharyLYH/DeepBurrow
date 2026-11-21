@@ -13,7 +13,7 @@ import { liveContent } from "./live-content";
 import { ask as askApi, attach as attachApi, cancel } from "./stream";
 
 const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
-const SETTLED: Event["type"][] = ["node.done", "node.error"];
+const SETTLED: ReadonlySet<Event["type"]> = new Set(["node.done", "node.error"]);
 
 const reason = (cause: unknown) => (cause instanceof Error ? cause.message : "Failed");
 
@@ -83,7 +83,7 @@ export function useBurrow(burrowId: string) {
   ) => {
     let settled = false;
     void run((event) => {
-      if (SETTLED.includes(event.type)) settled = true;
+      if (SETTLED.has(event.type)) settled = true;
       applyEvent(current() ?? event.nodeId, event);
     })
       .then(() => {

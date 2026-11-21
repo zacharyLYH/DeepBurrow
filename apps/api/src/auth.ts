@@ -3,6 +3,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context, MiddlewareHandler } from "hono";
 import {
   appendRefreshToken,
+  configuredEndpoints,
   createSession,
   getUser,
   primaryBurrow,
@@ -60,7 +61,13 @@ export function penalize(c: AuthContext, scope: string) {
 export const sessionPayload = (userId: string) => {
   const user = getUser(userId);
   const burrow = primaryBurrow(userId);
-  return user && burrow ? { user: { id: user.id, email: user.email }, burrowId: burrow.id } : null;
+  return user && burrow
+    ? {
+        user: { id: user.id, email: user.email },
+        burrowId: burrow.id,
+        configured: configuredEndpoints(userId),
+      }
+    : null;
 };
 
 export function issueRefresh(c: AuthContext, userId: string, sessionId: string, expiresAt: number) {

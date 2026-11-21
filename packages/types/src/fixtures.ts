@@ -1,3 +1,4 @@
+import { NODE_STEP } from "./layout.ts";
 import type { Burrow, Node } from "./types.ts";
 
 const T = 1_760_000_000_000;
@@ -9,7 +10,7 @@ export const demoCredentials = {
 };
 
 // Positions are server-owned: the app never recomputes layout on load.
-const ROW = 344;
+const ROW = NODE_STEP;
 
 export const fixtureBurrow: Burrow = {
   id: "burrow_fixture",

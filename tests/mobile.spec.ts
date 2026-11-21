@@ -1,7 +1,15 @@
 import { devices, expect, test, type Page } from "@playwright/test";
-import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow, readNodeRow, readViewport } from "./db.ts";
-import { card, cards, jump, open, rootId, signInContext, viewportMatrix } from "./helpers.ts";
+import {
+  burrowNodes,
+  card,
+  cards,
+  jump,
+  open,
+  rootId,
+  signInContext,
+  viewportMatrix,
+} from "./helpers.ts";
 
 const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];
 test.use(iphone13);
@@ -109,12 +117,11 @@ test("a finger long-press on text asks about the passage", async ({ page }) => {
   await expect(child.getByTestId(`reference-${childId}`)).toContainText(passage);
   await expect(card(page, rootId).locator("mark")).toHaveCount(0);
 
-  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
-    nodes: { id: string; parentId: string | null; origin: { selectedText?: string } }[];
-  };
-  expect(nodes.some((node) => node.parentId === "node_root" && node.origin.selectedText === passage)).toBe(
-    true,
-  );
+  expect(
+    (await burrowNodes(page)).some(
+      (node) => node.parentId === "node_root" && node.origin.selectedText === passage,
+    ),
+  ).toBe(true);
 });
 
 test("mobile restores the shared camera", async ({ page }) => {

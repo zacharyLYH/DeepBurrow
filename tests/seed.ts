@@ -3,10 +3,14 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { hashPassword } from "../apps/api/src/security.ts";
+import { seal } from "../apps/api/src/secrets.ts";
 import { demoCredentials, fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { MOCK_API_KEY, MOCK_PROVIDER_URL } from "./mock-provider.ts";
 
 const migrations = fileURLToPath(new URL("../db/migrations/", import.meta.url));
 const demoHash = hashPassword(demoCredentials.password);
+// Every browser-facing spec runs against the HTTP mock, never a fake in the API.
+const mockKey = Buffer.from(seal(MOCK_API_KEY));
 
 export function seedDemo(dataDir: string) {
   mkdirSync(dataDir, { recursive: true });
@@ -19,11 +23,21 @@ export function seedDemo(dataDir: string) {
   db.exec("BEGIN");
   try {
     db.prepare(
-      `INSERT INTO users (id, email, password_hash, created_at, settings)
-       VALUES (?, ?, ?, ?, '{}')
+      `INSERT INTO users (id, email, password_hash, created_at, settings, base_url, model, api_key_enc, verified_at)
+       VALUES (?, ?, ?, ?, '{}', ?, 'mock/chat', ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         email = excluded.email, password_hash = excluded.password_hash, settings = '{}'`,
-    ).run(fixtureBurrow.userId, demoCredentials.email, demoHash, fixtureBurrow.createdAt);
+         email = excluded.email, password_hash = excluded.password_hash, settings = '{}',
+         base_url = excluded.base_url, model = excluded.model,
+         api_key_enc = excluded.api_key_enc, verified_at = excluded.verified_at, search = '{}'`,
+    ).run(
+      fixtureBurrow.userId,
+      demoCredentials.email,
+      demoHash,
+      fixtureBurrow.createdAt,
+      MOCK_PROVIDER_URL,
+      mockKey,
+      Date.now(),
+    );
     db.prepare(
       `INSERT INTO burrows (id, user_id, title, viewport, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)

@@ -11,6 +11,8 @@ import type {
   Origin,
   Viewport,
 } from "../../../packages/types/src/types.ts";
+import type { ProviderConfig } from "./llm.ts";
+import { seal, unseal } from "./secrets.ts";
 
 type UserRow = {
   id: string;
@@ -27,6 +29,12 @@ type BurrowRow = {
   viewport: string;
   created_at: number;
   updated_at: number;
+};
+
+type ProviderRow = {
+  base_url: string | null;
+  model: string | null;
+  api_key_enc: Uint8Array | null;
 };
 
 type NodeRow = {
@@ -245,6 +253,67 @@ export function writeSettings(
   db.prepare("UPDATE users SET settings = ? WHERE id = ?").run(JSON.stringify(next), userId);
   return next;
 }
+
+const providerRow = db.prepare("SELECT base_url, model, api_key_enc FROM users WHERE id = ?");
+const searchRow = db.prepare("SELECT search FROM users WHERE id = ?");
+
+// Keys rest encrypted; a key that will not unseal counts as unconfigured.
+const configFrom = (
+  baseUrl: string | null | undefined,
+  model: string | null | undefined,
+  sealed: string | undefined,
+): ProviderConfig | null => {
+  if (!baseUrl || !model || !sealed) return null;
+  try {
+    return { baseUrl, model, apiKey: unseal(sealed) };
+  } catch {
+    return null;
+  }
+};
+
+export function readModelConfig(userId: string): ProviderConfig | null {
+  const row = providerRow.get(userId) as ProviderRow | undefined;
+  return configFrom(
+    row?.base_url,
+    row?.model,
+    row?.api_key_enc ? Buffer.from(row.api_key_enc).toString() : undefined,
+  );
+}
+
+export function writeModelConfig(userId: string, config: ProviderConfig) {
+  db.prepare(
+    "UPDATE users SET base_url = ?, model = ?, api_key_enc = ?, verified_at = ? WHERE id = ?",
+  ).run(config.baseUrl, config.model, Buffer.from(seal(config.apiKey)), Date.now(), userId);
+}
+
+export function readSearchConfig(userId: string): ProviderConfig | null {
+  const row = searchRow.get(userId) as { search: string } | undefined;
+  try {
+    const stored = JSON.parse(row?.search ?? "{}") as {
+      baseUrl?: string;
+      model?: string;
+      key?: string;
+    };
+    return configFrom(stored.baseUrl, stored.model, stored.key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeSearchConfig(userId: string, config: ProviderConfig) {
+  const search = JSON.stringify({
+    baseUrl: config.baseUrl,
+    model: config.model,
+    key: seal(config.apiKey),
+  });
+  db.prepare("UPDATE users SET search = ? WHERE id = ?").run(search, userId);
+}
+
+// Login only checks presence; configured endpoints are never health-checked.
+export const configuredEndpoints = (userId: string) => ({
+  model: readModelConfig(userId) !== null,
+  search: readSearchConfig(userId) !== null,
+});
 
 export function patchNode(
   userId: string,

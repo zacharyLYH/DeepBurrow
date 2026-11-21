@@ -1,11 +1,17 @@
 import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { demoCredentials, fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { demoCredentials, fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
+import type { Node as BurrowNode } from "../packages/types/src/types.ts";
 
 export const baseCount = fixtureNodes.length;
 export const rootId = fixtureNodes[0].id;
 
 export const cards = (page: Page) => page.locator('[data-testid^="card-"]');
 export const card = (page: Page, id: string) => page.getByTestId(`card-${id}`);
+
+export async function burrowNodes(page: Page): Promise<BurrowNode[]> {
+  const response = await page.request.get(`/api/burrows/${fixtureBurrow.id}`);
+  return ((await response.json()) as { nodes: BurrowNode[] }).nodes;
+}
 
 export async function signIn(page: Page) {
   const response = await page.request.post("/api/auth/sign-in", { data: demoCredentials });

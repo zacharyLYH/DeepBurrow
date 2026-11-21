@@ -3,9 +3,10 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 import { digest, signAccess, signRefresh } from "../apps/api/src/security.ts";
 import { demoCredentials } from "../packages/types/src/fixtures.ts";
+import { parseEvents } from "../packages/types/src/sse.ts";
 import { readCookies, type CookieJar } from "./api-auth.ts";
 import { resetDemoBurrow, TEST_DB_PATH } from "./db.ts";
-import { parseEvents } from "./stream.ts";
+import { MOCK_API_KEY, MOCK_PROVIDER_URL } from "./mock-provider.ts";
 
 const API = "http://localhost:8787";
 const PASSWORD = "correct horse battery";
@@ -94,6 +95,17 @@ test("two accounts get separate burrows, settings, nodes and runs", async () => 
   const alice = await signUp();
   const bob = await signUp();
   expect(alice.session.burrowId).not.toBe(bob.session.burrowId);
+
+  // A new account has no provider; give Alice the mock so her run can answer.
+  expect(
+    (
+      await call("/settings/model", {
+        method: "POST",
+        cookie: alice.cookie,
+        body: { baseUrl: MOCK_PROVIDER_URL, model: "mock/chat", apiKey: MOCK_API_KEY },
+      })
+    ).ok,
+  ).toBe(true);
 
   const aliceNode = await askRoot(alice, "Alice owns this root");
   expect(aliceNode.burrowId).toBe(alice.session.burrowId);

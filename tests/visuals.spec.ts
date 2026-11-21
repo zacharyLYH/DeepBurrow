@@ -41,11 +41,30 @@ test("rich markdown card", async ({ page }) => {
   await open(page);
   const rich = await ask(page, "zzmd render everything");
   await expect(rich).toHaveAttribute("data-status", "answered", { timeout: 20000 });
-  await expect(rich.getByTestId("mermaid")).toBeVisible();
+  await expect(rich.locator(".db-mermaid svg")).toBeVisible();
   await expect(rich.locator(".katex").first()).toBeVisible();
   await page.waitForTimeout(400);
 
   await shot(page, "rich-markdown.png");
+});
+
+test("pending card shows generation work", async ({ page }) => {
+  await open(page);
+  const card = await ask(page, "zzslow show generation");
+  await expect(card.locator('[data-testid^="progress-"]')).toContainText("Writing the answer…");
+  await expect(card.locator('[data-testid^="stop-"]')).toBeVisible();
+  await page.waitForTimeout(300);
+  await shot(page, "pending-card.png");
+});
+
+test("timed out card explains itself", async ({ page }) => {
+  await open(page);
+  const card = await ask(page, "zztimeout take too long");
+  await expect(card).toHaveAttribute("data-status", "failed", { timeout: 15_000 });
+  await expect(card.getByText("Failed: Model timed out")).toBeVisible();
+  await expect(card.locator('[data-testid^="retry-"]')).toHaveClass(/bg-emerald-600/);
+  await expect(card.locator('[data-testid^="drawer-handle-"]')).toHaveCount(0);
+  await shot(page, "timeout-card.png");
 });
 
 const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];
@@ -86,7 +105,7 @@ test.describe("mobile", () => {
     await open(page);
     const rich = await ask(page, "zzmd render everything");
     await expect(rich).toHaveAttribute("data-status", "answered", { timeout: 20000 });
-    await expect(rich.getByTestId("mermaid")).toBeVisible();
+    await expect(rich.locator(".db-mermaid svg")).toBeVisible();
     await expect(rich.locator(".katex").first()).toBeVisible();
     await jump(page, "zzmd");
     const zoom = page.getByTestId("zoom-percent");
@@ -96,6 +115,25 @@ test.describe("mobile", () => {
     await expect(zoom).toHaveText(/6\d%/);
     await page.waitForTimeout(500);
     await shot(page, "rich-markdown-mobile.png");
+  });
+
+  test("pending card", async ({ page }) => {
+    await open(page);
+    const card = await ask(page, "zzslow show generation");
+    await expect(card.locator('[data-testid^="progress-"]')).toContainText("Writing the answer…");
+    await expect(card.locator('[data-testid^="stop-"]')).toBeVisible();
+    await page.waitForTimeout(300);
+    await shot(page, "pending-card-mobile.png");
+  });
+
+  test("timed out card", async ({ page }) => {
+    await open(page);
+    const card = await ask(page, "zztimeout take too long");
+    await expect(card).toHaveAttribute("data-status", "failed", { timeout: 15_000 });
+    await expect(card.getByText("Failed: Model timed out")).toBeVisible();
+    await expect(card.locator('[data-testid^="retry-"]')).toHaveClass(/bg-emerald-600/);
+    await expect(card.locator('[data-testid^="drawer-handle-"]')).toHaveCount(0);
+    await shot(page, "timeout-card-mobile.png");
   });
 
   test("reference answer", async ({ page }) => {

@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +6,7 @@ import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import type { Node as BurrowNode } from "../packages/types/src/types.ts";
 import { remoteCookie } from "./api-auth.ts";
 import { seedDemo } from "./seed.ts";
+import { startApi, type SpawnedApi } from "./spawn-api.ts";
 
 // A run lives only in memory. Kill the process mid-run and its pending row is
 // dead weight; reattaching from a fresh process settles it to stopped.
@@ -14,40 +14,18 @@ const DATA_DIR = mkdtempSync(join(tmpdir(), "deepburrow-crash-"));
 const PORT = 8900 + Math.floor(Math.random() * 90);
 const URL = `http://127.0.0.1:${PORT}`;
 
-let api: ChildProcess | undefined;
+let api: SpawnedApi | undefined;
 let cookie = "";
 
 const start = async () => {
-  api = spawn(process.execPath, ["apps/api/src/server.ts"], {
-    env: {
-      ...process.env,
-      DATA_DIR,
-      PORT: String(PORT),
-      FAKE_LATENCY_MS: "1500",
-    },
-    stdio: "ignore",
-  });
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      if ((await fetch(`${URL}/health`)).ok) return;
-    } catch {
-      // not listening yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error("api did not start");
+  api = await startApi({ dataDir: DATA_DIR, port: PORT });
 };
 
 const signIn = async () => {
   if (!cookie) cookie = await remoteCookie(URL);
 };
 
-const stop = async () => {
-  if (!api || api.exitCode !== null || api.signalCode !== null) return;
-  const exited = new Promise((resolve) => api!.once("exit", resolve));
-  api.kill("SIGKILL");
-  await exited;
-};
+const stop = () => api?.stop();
 
 test.beforeAll(() => seedDemo(DATA_DIR));
 
@@ -65,7 +43,8 @@ test("a crashed run is settled when a client reattaches", async () => {
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({
       parentId: "node_root",
-      origin: { question: "Does a crash leave a card?" },
+      // zzslow keeps the mock mid-answer while the process is killed.
+      origin: { question: "zzslow crash card?" },
     }),
   });
   const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();

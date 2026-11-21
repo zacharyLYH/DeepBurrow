@@ -42,6 +42,12 @@ const read = <T>(sql: string, ...params: (string | number)[]) => {
 };
 
 // Tests that assert on server rows (rename, delete, position) read them here.
+export const readProviderRow = () =>
+  read<{ base_url: string | null; model: string | null; api_key_enc: Uint8Array | null }>(
+    "SELECT base_url, model, api_key_enc FROM users WHERE id = ?",
+    fixtureBurrow.userId,
+  );
+
 export const readNodeRow = (id: string) =>
   read<{ title: string; deleted_at: number | null; position_x: number; position_y: number }>(
     "SELECT title, deleted_at, position_x, position_y FROM nodes WHERE id = ?",
@@ -55,6 +61,18 @@ export function readSettings() {
     demoCredentials.email,
   );
   return JSON.parse(row?.settings ?? "{}") as Record<string, unknown>;
+}
+
+// Used by the one test that proves asking without a provider fails clearly.
+export function clearProviders() {
+  const db = new DatabaseSync(TEST_DB_PATH);
+  try {
+    db.prepare(
+      "UPDATE users SET base_url = NULL, model = NULL, api_key_enc = NULL, verified_at = NULL, search = '{}'",
+    ).run();
+  } finally {
+    db.close();
+  }
 }
 
 export function readViewport() {

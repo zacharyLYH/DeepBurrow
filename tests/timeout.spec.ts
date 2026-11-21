@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,44 +6,27 @@ import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import type { Node as BurrowNode } from "../packages/types/src/types.ts";
 import { remoteCookie } from "./api-auth.ts";
 import { seedDemo } from "./seed.ts";
+import { startApi, type SpawnedApi } from "./spawn-api.ts";
 
 // A slow run must not hang forever: the registry aborts it and settles `failed`.
 const DATA_DIR = mkdtempSync(join(tmpdir(), "deepburrow-timeout-"));
 const PORT = 9000 + Math.floor(Math.random() * 90);
 const URL = `http://127.0.0.1:${PORT}`;
 
-let api: ChildProcess | undefined;
+let api: SpawnedApi | undefined;
 let cookie = "";
 
 test.beforeAll(async () => {
   seedDemo(DATA_DIR);
-  api = spawn(process.execPath, ["apps/api/src/server.ts"], {
-    env: {
-      ...process.env,
-      DATA_DIR,
-      PORT: String(PORT),
-      FAKE_LATENCY_MS: "800",
-      RUN_TIMEOUT_MS: "100",
-    },
-    stdio: "ignore",
-  });
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      if ((await fetch(`${URL}/health`)).ok) return;
-    } catch {
-      // not listening yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error("api did not start");
+  api = await startApi({ dataDir: DATA_DIR, port: PORT, env: { RUN_TIMEOUT_MS: "100" } });
 });
 
 const start = async () => {
   if (!cookie) cookie = await remoteCookie(URL);
 };
 
-test.afterAll(() => {
-  api?.kill("SIGKILL");
+test.afterAll(async () => {
+  await api?.stop();
   rmSync(DATA_DIR, { recursive: true, force: true });
 });
 

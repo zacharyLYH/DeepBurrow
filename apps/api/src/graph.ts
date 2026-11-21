@@ -1,141 +1,219 @@
 import { Annotation, END, START, StateGraph, type LangGraphRunnableConfig } from "@langchain/langgraph";
-import { parseHeader } from "../../../packages/types/src/header.ts";
-import type { Meta } from "../../../packages/types/src/types.ts";
-import type { Model } from "./model.ts";
+import { titleFromAsk } from "../../../packages/types/src/header.ts";
+import type { Meta, Source } from "../../../packages/types/src/types.ts";
+import type { ChatMessage, ChatReply, Model, ToolCall, ToolSpec } from "./llm.ts";
+import { REPAIR_PROMPT, SYSTEM_PROMPT } from "./prompts.ts";
+import { SEARCH_TOOL, sourcesFromMarkdown } from "./search.ts";
+import { validateAnswer } from "./validate.ts";
 
 export type GraphChunk =
   | ({ type: "meta" } & Meta)
   | { type: "progress"; line: string }
   | { type: "token"; text: string };
 
-const MAX_ROUNDS = 3;
+export type AgentProviders = {
+  model: Model;
+  // One call searches or reads one page; the tool can be invoked again.
+  search?: (query: string, signal?: AbortSignal) => Promise<string>;
+};
+
+const MAX_REPAIRS = 2;
+const MAX_SEARCH_ROUNDS = 3;
+
+// Every channel replaces its value; defaults make extra state optional.
+const replace = <T>(defaultValue: () => T) => ({
+  reducer: (_prev: T, value: T) => value,
+  default: defaultValue,
+});
 
 const State = Annotation.Root({
-  nodeId: Annotation<string>,
   ask: Annotation<string>,
   lineage: Annotation<string>,
-  suggestedQuestions: Annotation<string[]>({ reducer: (_prev, next) => next, default: () => [] }),
-  openQuestion: Annotation<string>({ reducer: (_prev, next) => next, default: () => "" }),
-  round: Annotation<number>({ reducer: (_prev, next) => next, default: () => 0 }),
-  done: Annotation<boolean>({ reducer: (_prev, next) => next, default: () => false }),
-  notes: Annotation<string>({ reducer: (prev, next) => prev + next, default: () => "" }),
+  sessionId: Annotation<string>,
+  // Conversation nodes return only their new turns; the reducer appends.
+  messages: Annotation<ChatMessage[]>({
+    reducer: (previous, next) => [...previous, ...next],
+    default: () => [],
+  }),
+  rounds: Annotation<number>(replace<number>(() => 0)),
+  sources: Annotation<Source[]>(replace<Source[]>(() => [])),
+  answer: Annotation<string>(replace<string>(() => "")),
+  meta: Annotation<Meta>(replace<Meta>(() => ({ title: "", sources: [], followups: [] }))),
+  body: Annotation<string>(replace<string>(() => "")),
+  errors: Annotation<string[]>(replace<string[]>(() => [])),
+  repairs: Annotation<number>(replace<number>(() => 0)),
 });
 
 type GraphState = typeof State.State;
 
-const writeTo = (config: LangGraphRunnableConfig) =>
-  config.writer as ((chunk: GraphChunk) => void) | undefined;
+const emit = (config: LangGraphRunnableConfig, chunk: GraphChunk) =>
+  (config.writer as ((chunk: GraphChunk) => void) | undefined)?.(chunk);
 
 const progress = (config: LangGraphRunnableConfig, line: string) =>
-  writeTo(config)?.({ type: "progress", line });
+  emit(config, { type: "progress", line });
 
-const isObj = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const complete = (
+  providers: AgentProviders,
+  messages: ChatMessage[],
+  state: GraphState,
+  config: LangGraphRunnableConfig,
+  tools?: ToolSpec[],
+) =>
+  providers.model(messages, {
+    sessionId: state.sessionId,
+    signal: config.signal,
+    ...(tools ? { tools } : {}),
+  });
 
-const stringList = (value: unknown) => {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error("bad questions JSON");
-  }
-  return value as string[];
-};
+// System prompt, root→node transcript, then the ask. Search results join the
+// conversation as tool messages.
+const withContext = (state: GraphState): ChatMessage[] => [
+  { role: "system", content: SYSTEM_PROMPT },
+  ...(state.lineage.trim() ? [{ role: "user" as const, content: state.lineage }] : []),
+  { role: "user", content: state.ask },
+];
 
-const parseJson = (raw: string, error: string) => {
+// A tool request is the last assistant turn, not a second copy in state.
+const pendingToolCalls = (state: GraphState) => state.messages.at(-1)?.tool_calls ?? [];
+
+const queryOf = (call: ToolCall) => {
   try {
-    return JSON.parse(raw) as unknown;
+    const { query } = JSON.parse(call.function.arguments) as { query?: unknown };
+    return typeof query === "string" ? query.trim() : "";
   } catch {
-    throw new Error(error);
+    return "";
   }
 };
 
-const parsePlan = (raw: string) => {
-  const parsed = parseJson(raw, "bad plan JSON");
-  if (!isObj(parsed)) throw new Error("bad plan JSON");
-  return stringList(parsed.suggestedQuestions);
-};
-
-const parseVerdict = (raw: string) => {
-  const parsed = parseJson(raw, "bad verdict JSON");
-  if (!isObj(parsed) || typeof parsed.done !== "boolean") throw new Error("bad verdict JSON");
-  return { done: parsed.done, suggestedQuestions: stringList(parsed.suggestedQuestions) };
-};
-
-const plan = (model: Model) => async (state: GraphState, config: LangGraphRunnableConfig) => {
-  progress(config, "Planning the research…");
-  const raw = await model.complete("plan", [{ role: "user", content: state.ask }]);
-  return {
-    suggestedQuestions: parsePlan(raw),
-    round: 1,
-  };
-};
-
-const compose = (model: Model) => async (state: GraphState, config: LangGraphRunnableConfig) => {
-  const openQuestion = state.suggestedQuestions[0] ?? state.ask;
-  progress(config, openQuestion);
-  const raw = await model.complete(
-    "compose",
-    [
-      { role: "user", content: `Lineage:\n${state.lineage}\n\nNotes:\n${state.notes}` },
-      { role: "user", content: openQuestion },
-    ],
-    state.round,
-  );
-  return {
-    notes: raw,
-    openQuestion,
-    suggestedQuestions: state.suggestedQuestions.slice(1),
-  };
-};
-
-const judge = (model: Model) => async (state: GraphState, config: LangGraphRunnableConfig) => {
-  progress(config, "Checking what's still open…");
-  const raw = await model.complete(
-    "judge",
-    [
-      { role: "user", content: `Notes:\n${state.notes}` },
-      { role: "user", content: state.ask },
-    ],
-    state.round,
-  );
-  const verdict = parseVerdict(raw);
-  if (verdict.done) progress(config, "Enough gathered.");
-
-  return {
-    done: verdict.done,
-    suggestedQuestions: [...state.suggestedQuestions, ...verdict.suggestedQuestions],
-    round: state.round + 1,
-  };
-};
-
-// Only summarize writes user-visible text. It owns the header split, then hands
-// tokens to the caller through the graph writer.
-const summarize = (model: Model) => async (state: GraphState, config: LangGraphRunnableConfig) => {
+const generateAnswer = (providers: AgentProviders) => async (
+  state: GraphState,
+  config: LangGraphRunnableConfig,
+) => {
   progress(config, "Writing the answer…");
-  const raw = await model.complete("summarize", [
-    { role: "user", content: `Lineage:\n${state.lineage}\n\nNotes:\n${state.notes}` },
-    { role: "user", content: state.ask },
-  ]);
-  const { meta, body } = parseHeader(raw);
+  // The first call seeds the conversation; later calls carry the tool history.
+  const messages = state.messages.length ? state.messages : withContext(state);
+  // The tool is on the first call and each round until the budget is spent.
+  const tools = providers.search && state.rounds < MAX_SEARCH_ROUNDS ? [SEARCH_TOOL] : undefined;
+  const reply: ChatReply = await complete(providers, messages, state, config, tools);
+  // Seed the transcript once, then append only this assistant turn. A final
+  // answer still lives in `answer`; only tool calls need to stay in history.
+  return {
+    answer: reply.content,
+    messages: [
+      ...(state.messages.length ? [] : withContext(state)),
+      ...(reply.toolCalls.length
+        ? [
+            {
+              role: "assistant" as const,
+              content: reply.content,
+              tool_calls: reply.toolCalls,
+            },
+          ]
+        : []),
+    ],
+  };
+};
 
-  writeTo(config)?.({ type: "meta", ...meta });
-  for (const text of body.match(/\S+\s*/g) ?? []) writeTo(config)?.({ type: "token", text });
+const webSearch = (providers: AgentProviders) => async (
+  state: GraphState,
+  config: LangGraphRunnableConfig,
+) => {
+  progress(config, "Searching the web…");
+  const sources = new Map(state.sources.map((source) => [source.url, source]));
+  const results: ChatMessage[] = [];
+
+  const searchOne = async (call: ToolCall) => {
+    const query = queryOf(call);
+    if (!query) return "Search failed: the query was empty.";
+    try {
+      const raw = await providers.search!(query, config.signal);
+      if (!raw.trim()) return "No search results.";
+      for (const source of sourcesFromMarkdown(raw)) sources.set(source.url, source);
+      return raw;
+    } catch (error) {
+      // A cancelled run must still propagate its abort.
+      if (config.signal?.aborted) throw error;
+      progress(config, "Search failed; continuing.");
+      return "Search failed.";
+    }
+  };
+
+  // Tool calls from one turn run sequentially, one request each.
+  for (const call of pendingToolCalls(state)) {
+    results.push({ role: "tool", tool_call_id: call.id, content: await searchOne(call) });
+  }
+
+  return { messages: results, sources: [...sources.values()], rounds: state.rounds + 1 };
+};
+
+const validate = () => async (state: GraphState) => {
+  const next = await validateAnswer(
+    state.answer,
+    new Set(state.sources.map((source) => source.url)),
+  );
+  // Repairs may return nothing. Keep the last header and any usable body, so a
+  // failed node still shows what it knew and the original can still answer.
+  return {
+    ...next,
+    meta: {
+      title: next.meta.title || state.meta.title,
+      sources: next.meta.sources.length ? next.meta.sources : state.meta.sources,
+      followups: next.meta.followups.length ? next.meta.followups : state.meta.followups,
+    },
+    body: next.body.trim() ? next.body : state.body,
+  };
+};
+
+const repairAnswer = (providers: AgentProviders) => async (
+  state: GraphState,
+  config: LangGraphRunnableConfig,
+) => {
+  progress(config, "Fixing the answer…");
+  const prompt = REPAIR_PROMPT.replace("{{response}}", state.answer).replace(
+    "{{errors}}",
+    state.errors.join("\n"),
+  );
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: prompt },
+  ];
+  const reply = await complete(providers, messages, state, config);
+  return { answer: reply.content, repairs: state.repairs + 1 };
+};
+
+const streamAnswer = (providers: AgentProviders) => (state: GraphState, config: LangGraphRunnableConfig) => {
+  emit(config, {
+    type: "meta",
+    title: state.meta.title.trim() || titleFromAsk(state.ask),
+    sources: providers.search ? state.sources : state.meta.sources,
+    followups: state.meta.followups,
+  });
+  // A body is the only streamable output; headers alone are a failed run.
+  if (!state.body.trim()) throw new Error("Empty answer");
+  for (const text of state.body.match(/\S+\s*/g) ?? []) emit(config, { type: "token", text });
   return {};
 };
 
-export function buildGraph(model: Model) {
-  // Stops live on the edge, not in a while: a done verdict or the round cap.
-  const route = (state: GraphState) =>
-    state.done || state.round > MAX_ROUNDS ? ("summarize" as const) : ("compose" as const);
+export function buildGraph(providers: AgentProviders) {
+  const afterGenerate =
+    (state: GraphState) =>
+      providers.search && pendingToolCalls(state).length > 0 && state.rounds < MAX_SEARCH_ROUNDS
+        ? "search"
+        : "validate";
+  const afterValidate = (state: GraphState) =>
+    state.errors.length === 0 || state.repairs >= MAX_REPAIRS ? "stream" : "repair";
 
   return new StateGraph(State)
-    .addNode("plan", plan(model))
-    .addNode("compose", compose(model))
-    .addNode("judge", judge(model))
-    .addNode("summarize", summarize(model))
-    .addEdge(START, "plan")
-    .addEdge("plan", "compose")
-    .addEdge("compose", "judge")
-    .addConditionalEdges("judge", route, { compose: "compose", summarize: "summarize" })
-    .addEdge("summarize", END)
+    .addNode("generate", generateAnswer(providers))
+    .addNode("search", webSearch(providers))
+    .addNode("validate", validate())
+    .addNode("repair", repairAnswer(providers))
+    .addNode("stream", streamAnswer(providers))
+    .addEdge(START, "generate")
+    .addConditionalEdges("generate", afterGenerate, { search: "search", validate: "validate" })
+    .addEdge("search", "generate")
+    .addConditionalEdges("validate", afterValidate, { repair: "repair", stream: "stream" })
+    .addEdge("repair", "validate")
+    .addEdge("stream", END)
     .compile();
 }

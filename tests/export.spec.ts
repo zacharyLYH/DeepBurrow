@@ -103,7 +103,8 @@ test("rich export keeps diagrams, math, media and the lightbox", async ({ page }
   await open(page);
   const rich = await ask(page, "zzmd render everything");
   await expect(rich).toHaveAttribute("data-status", "answered", { timeout: 20_000 });
-  await expect(rich.getByTestId("mermaid")).toBeVisible();
+  // Mermaid renders lazily; the export snapshots the DOM, so wait for the SVG.
+  await expect(rich.locator(".db-mermaid svg")).toBeVisible();
   await expect(rich.locator(".katex").first()).toBeVisible();
 
   const { path, html } = await exportHtml(page, "rich.html");

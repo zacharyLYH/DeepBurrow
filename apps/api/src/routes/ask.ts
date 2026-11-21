@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "hono";
 import { buildAsk, titleFromOrigin } from "../../../../packages/types/src/header.ts";
-import type { Node, Origin } from "../../../../packages/types/src/types.ts";
+import { NODE_STEP } from "../../../../packages/types/src/layout.ts";
+import type { Coords, Node, Origin } from "../../../../packages/types/src/types.ts";
 import type { AuthEnv } from "../auth.ts";
-import { getNode, primaryBurrow, putNode } from "../db.ts";
+import { getBurrow, getNode, primaryBurrow, putNode } from "../db.ts";
 import { startRun } from "../runs.ts";
 import { relay } from "../stream.ts";
 
@@ -11,6 +12,17 @@ type AskBody = {
   nodeId?: string;
   parentId?: string | null;
   origin?: Origin;
+};
+
+// New cards append after the rightmost card on the parent's row, never on top
+// of a sibling; the client centers the result.
+const nextPosition = (nodes: Node[], parent: Node | null): Coords => {
+  const y = parent?.position.y ?? 0;
+  const right = nodes.reduce(
+    (at, node) => (Math.abs(node.position.y - y) < 1 ? Math.max(at, node.position.x) : at),
+    parent?.position.x ?? 0,
+  );
+  return { x: right + NODE_STEP, y };
 };
 
 export async function ask(c: Context<AuthEnv>) {
@@ -33,8 +45,6 @@ export async function ask(c: Context<AuthEnv>) {
   const prompt = buildAsk(origin);
   if (!prompt.trim()) return c.json({ error: "ask required" }, 400);
 
-  // New cards land to the right of their parent; the client then centers them.
-  const parentPosition = parent?.position ?? { x: 0, y: 0 };
   const node: Node = {
     id: existing?.id ?? randomUUID(),
     burrowId,
@@ -46,10 +56,7 @@ export async function ask(c: Context<AuthEnv>) {
     followups: [],
     status: "pending",
     error: "",
-    position: existing?.position ?? {
-      x: parent ? parentPosition.x + 344 : 0,
-      y: parent ? parentPosition.y : 0,
-    },
+    position: existing?.position ?? nextPosition(getBurrow(userId, burrowId)?.nodes ?? [], parent),
     createdAt: existing?.createdAt ?? Date.now(),
     updatedAt: Date.now(),
   };

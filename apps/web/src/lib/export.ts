@@ -1,6 +1,8 @@
 // The export is a snapshot of the rendered canvas, not a data-layer format.
 // It intentionally reads React Flow and card class names.
 
+import { MAX_READING, MIN_READING } from "./settings.ts";
+
 const PADDING = 40;
 const CARD_MAX_HEIGHT = 620;
 
@@ -85,7 +87,7 @@ html.db-js #db-export-tools { display: flex; }
 @media print { #db-export-tools { display: none; } }
 `;
 
-const EXPORT_TOOLS = String.raw`<div id="db-export-tools" role="group" aria-label="Document controls">
+const exportTools = () => String.raw`<div id="db-export-tools" role="group" aria-label="Document controls">
 <button id="db-export-text-down" type="button" aria-label="Decrease text size" title="Decrease text size">A−</button>
 <button id="db-export-text-up" type="button" aria-label="Increase text size" title="Increase text size">A+</button>
 <span class="sep" aria-hidden="true"></span>
@@ -107,7 +109,7 @@ const EXPORT_TOOLS = String.raw`<div id="db-export-tools" role="group" aria-labe
 
   var reading = 1;
   function setReading(value) {
-    reading = Math.min(1.4, Math.max(0.8, Math.round(value * 10) / 10));
+    reading = Math.min(${MAX_READING}, Math.max(${MIN_READING}, Math.round(value * 10) / 10));
     root.style.setProperty("--db-reading", (0.875 * reading).toFixed(4) + "rem");
   }
   document.getElementById("db-export-text-down").addEventListener("click", function () {
@@ -121,7 +123,7 @@ const EXPORT_TOOLS = String.raw`<div id="db-export-tools" role="group" aria-labe
   var viewport = document.querySelector(".react-flow__viewport");
   var nodes = document.querySelectorAll(".react-flow__node");
   if (flow && viewport && nodes.length) {
-    var padding = 40;
+    var padding = ${PADDING};
     var boxes = [];
     nodes.forEach(function (node) {
       var hit = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(node.style.transform);
@@ -224,7 +226,7 @@ export function exportBurrowHtml(title: string) {
 </head>
 <body>
 ${clone.outerHTML}
-${EXPORT_TOOLS}
+${exportTools()}
 </body>
 </html>`;
 

@@ -32,4 +32,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit, ret
   return apiFetch(input, init, false);
 }
 
-export type Session = { user: { id: string; email: string }; burrowId: string };
+export type Session = {
+  user: { id: string; email: string };
+  burrowId: string;
+};

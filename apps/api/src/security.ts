@@ -10,7 +10,7 @@ const ISSUER = "deepburrow";
 const AUDIENCE = { access: "deepburrow-access", refresh: "deepburrow-refresh" } as const;
 const SCRYPT = { N: 16_384, r: 8, p: 1, size: 64 };
 
-const secret = process.env.AUTH_SECRET ?? "dev-only-auth-secret-change-me-32-chars";
+export const secret = process.env.AUTH_SECRET ?? "dev-only-auth-secret-change-me-32-chars";
 if (secret.length < 32) throw new Error("AUTH_SECRET must be at least 32 characters");
 if (process.env.NODE_ENV === "production" && !process.env.AUTH_SECRET) {
   throw new Error("AUTH_SECRET is required in production");

@@ -1,45 +1,28 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import type { Node as BurrowNode } from "../packages/types/src/types.ts";
-import { demoCookie } from "./api-auth.ts";
-import { seedDemo } from "./seed.ts";
+import { testApp, type TestApp } from "./app-harness.ts";
 
-// The M5 graph additions, exercised through the real Hono app.
-let app: typeof import("../apps/api/src/server.ts")["app"];
-let cookie = "";
+// The graph additions, exercised through the real Hono app.
+let api: TestApp;
 
 test.beforeAll(async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "deepburrow-nodes-"));
-  process.env.DATA_DIR = dataDir;
-  seedDemo(dataDir);
-  ({ app } = await import("../apps/api/src/server.ts"));
-  cookie = await demoCookie(app);
+  api = await testApp("deepburrow-nodes-");
 });
 
 const call = (path: string, method = "GET", body?: unknown) =>
-  app.fetch(
-    new Request(`http://api${path}`, {
-      method,
-      headers: {
-        cookie,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-  );
-
-const nodes = async () =>
-  ((await (await call(`/burrows/${fixtureBurrow.id}`)).json()) as { nodes: BurrowNode[] }).nodes;
+  api.call(path, {
+    method,
+    ...(body === undefined
+      ? {}
+      : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  });
 
 test("rename trims, rejects blanks and persists", async () => {
   const response = await call("/nodes/node_why", "PATCH", { title: "  Why it doubles  " });
   expect(response.status).toBe(200);
   expect(((await response.json()) as { node: BurrowNode }).node.title).toBe("Why it doubles");
 
-  const saved = (await nodes()).find((node) => node.id === "node_why");
+  const saved = (await api.nodes()).find((node) => node.id === "node_why");
   expect(saved?.title).toBe("Why it doubles");
 
   expect((await call("/nodes/node_why", "PATCH", { title: "   " })).status).toBe(400);
@@ -53,7 +36,7 @@ test("delete takes the branch out of every read and restore brings it back", asy
   expect(ids.sort()).toEqual(["node_cubic", "node_long", "node_root", "node_why"]);
 
   // Reads filter soft-deleted rows, so the burrow is empty but the rows remain.
-  expect(await nodes()).toEqual([]);
+  expect(await api.nodes()).toEqual([]);
   expect((await call("/nodes/node_root/stream")).status).toBe(404);
   expect(
     (await call("/ask", "POST", { parentId: "node_root", origin: { question: "orphan" } })).status,
@@ -62,7 +45,7 @@ test("delete takes the branch out of every read and restore brings it back", asy
   const restored = await call("/nodes/node_root/restore", "POST");
   expect(restored.status).toBe(200);
   expect(((await restored.json()) as { ids: string[] }).ids).toHaveLength(4);
-  expect((await nodes()).map((node) => node.id).sort()).toEqual(ids.sort());
+  expect((await api.nodes()).map((node) => node.id).sort()).toEqual(ids.sort());
 
   // Nothing left to restore.
   expect((await call("/nodes/node_root/restore", "POST")).status).toBe(404);
@@ -70,9 +53,9 @@ test("delete takes the branch out of every read and restore brings it back", asy
 
 test("deleting one card leaves its siblings", async () => {
   expect((await call("/nodes/node_why", "DELETE")).status).toBe(200);
-  expect((await nodes()).map((node) => node.id)).toEqual(["node_root", "node_cubic", "node_long"]);
+  expect((await api.nodes()).map((node) => node.id)).toEqual(["node_root", "node_cubic", "node_long"]);
   await call("/nodes/node_why/restore", "POST");
-  expect((await nodes()).map((node) => node.id)).toEqual([
+  expect((await api.nodes()).map((node) => node.id)).toEqual([
     "node_root",
     "node_why",
     "node_cubic",

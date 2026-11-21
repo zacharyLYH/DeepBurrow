@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { fixtureBurrow } from "../packages/types/src/fixtures.ts";
 import { resetDemoBurrow } from "./db.ts";
-import { cards, open, signIn } from "./helpers.ts";
+import { burrowNodes, cards, open, signIn } from "./helpers.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -30,9 +30,7 @@ test("empty burrow shows one composer and submits a root card", async ({ page })
   await expect(page.getByTestId("entry-composer")).toHaveCount(0);
 
   // The row really is a root: no parent on the server.
-  const { nodes } = (await (await page.request.get(`/api/burrows/${fixtureBurrow.id}`)).json()) as {
-    nodes: { id: string; parentId: string | null; origin: { question: string } }[];
-  };
+  const nodes = await burrowNodes(page);
   const created = nodes.find((node) => node.origin.question === "What is the root question?");
   expect(created?.parentId).toBeNull();
 
