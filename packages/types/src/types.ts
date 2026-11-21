@@ -14,6 +14,10 @@ export type Origin = {
 export type Coords = { x: number; y: number };
 export type Viewport = Coords & { zoom: number };
 
+// Shared contract constants: the API validates with these, the UI mirrors them.
+export const TITLE_MAX = 80;
+export const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
+
 export type Burrow = {
   id: string;
   userId: string;

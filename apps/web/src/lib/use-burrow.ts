@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  DEFAULT_VIEWPORT,
   type Burrow,
   type Coords,
   type Event,
@@ -12,15 +13,15 @@ import { apiFetch } from "./api";
 import { liveContent } from "./live-content";
 import { ask as askApi, attach as attachApi, cancel } from "./stream";
 
-const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
 const SETTLED: ReadonlySet<Event["type"]> = new Set(["node.done", "node.error"]);
 
 const reason = (cause: unknown) => (cause instanceof Error ? cause.message : "Failed");
 
 // One payload for a new ask and a retry; a retry only pins the existing row.
-const payload = (origin: Origin, parentId: string | null, nodeId?: string) => ({
+const payload = (origin: Origin, parentId: string | null, nodeId?: string, burrowId?: string) => ({
   nodeId,
   parentId,
+  burrowId,
   origin,
 });
 
@@ -33,7 +34,6 @@ const send = (path: string, method: "PATCH" | "POST" | "DELETE", body?: unknown)
 
 export function useBurrow(burrowId: string) {
   const [nodes, setNodes] = useState<BurrowNode[]>([]);
-  const [title, setTitle] = useState("");
   const [viewport, setViewport] = useState<Viewport>(DEFAULT_VIEWPORT);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -116,7 +116,7 @@ export function useBurrow(burrowId: string) {
     let id: string | null = null;
 
     track(() => id, controller, (onEvent) =>
-      askApi(payload(origin, parentId), controller.signal, (event) => {
+      askApi(payload(origin, parentId, undefined, burrowId), controller.signal, (event) => {
         // The first event is the stored row: adopt its id, then follow it.
         if (!id) {
           id = event.nodeId;
@@ -172,7 +172,6 @@ export function useBurrow(burrowId: string) {
       const response = await apiFetch(`/api/burrows/${burrowId}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as { burrow: Burrow; nodes: BurrowNode[] };
-      setTitle(data.burrow.title);
       setViewport(data.burrow.viewport);
       setNodes(data.nodes);
     } catch (cause) {
@@ -223,7 +222,6 @@ export function useBurrow(burrowId: string) {
   }, []);
 
   return {
-    title,
     viewport,
     nodes,
     loading,

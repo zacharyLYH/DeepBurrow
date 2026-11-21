@@ -1,7 +1,6 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { NewPageIcon } from "@/components/new-page-icon";
 
 const KEYS: [string, string][] = [
   ["⌘K / Ctrl+K", "Search cards and run commands"],
@@ -36,37 +35,15 @@ export function Shortcuts({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
-export function EntryComposer({ onSubmit }: { onSubmit: (question: string) => void }) {
-  const [text, setText] = useState("");
-  const submit = () => {
-    if (!text.trim()) return;
-    onSubmit(text.trim());
-    setText("");
-  };
-
+export function EmptyCanvas({ onNew }: { onNew: () => void }) {
   return (
-    <div data-testid="entry-composer" className="flex h-full items-center justify-center px-6 pb-24">
-      <div className="w-full max-w-xl rounded-xl border bg-card p-3 shadow-sm">
-        <Textarea
-          autoFocus
-          data-testid="entry-input"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-          rows={3}
-          placeholder="Ask a question to start this burrow"
-          className="resize-none border-0 shadow-none focus-visible:ring-0"
-        />
-        <div className="flex justify-end">
-          <Button data-testid="entry-submit" size="sm" onClick={submit}>
-            Ask
-          </Button>
-        </div>
+    <div data-testid="empty-canvas" className="flex h-full items-center justify-center px-6">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <p className="text-sm text-muted-foreground">Nothing on this canvas yet.</p>
+        <Button data-testid="empty-new-burrow" size="sm" onClick={onNew}>
+          <NewPageIcon />
+          New burrow
+        </Button>
       </div>
     </div>
   );

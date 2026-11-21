@@ -11,6 +11,7 @@ import { relay } from "../stream.ts";
 type AskBody = {
   nodeId?: string;
   parentId?: string | null;
+  burrowId?: string;
   origin?: Origin;
 };
 
@@ -36,8 +37,12 @@ export async function ask(c: Context<AuthEnv>) {
   const parent = parentId ? getNode(userId, parentId) : null;
   if (parentId && !parent) return c.json({ error: "parent not found" }, 404);
 
-  const burrowId = existing?.burrowId ?? parent?.burrowId ?? primaryBurrow(userId)?.id;
+  const burrowId =
+    existing?.burrowId ?? parent?.burrowId ?? body.burrowId ?? primaryBurrow(userId)?.id;
   if (!burrowId) return c.json({ error: "burrow not found" }, 404);
+  // A root ask targets the selected burrow; ownership is checked before write.
+  const view = getBurrow(userId, burrowId);
+  if (!view) return c.json({ error: "burrow not found" }, 404);
 
   // A new ask supplies the origin; a retry keeps the one already on the row.
   const origin = existing?.origin ?? body.origin;
@@ -56,7 +61,7 @@ export async function ask(c: Context<AuthEnv>) {
     followups: [],
     status: "pending",
     error: "",
-    position: existing?.position ?? nextPosition(getBurrow(userId, burrowId)?.nodes ?? [], parent),
+    position: existing?.position ?? nextPosition(view.nodes, parent),
     createdAt: existing?.createdAt ?? Date.now(),
     updatedAt: Date.now(),
   };

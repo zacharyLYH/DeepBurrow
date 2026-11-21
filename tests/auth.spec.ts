@@ -275,7 +275,7 @@ test("an expired access cookie refreshes transparently", async ({ page }) => {
 
   await page.goto("/");
   await expect(page.getByTestId("auth-screen")).toHaveCount(0);
-  await expect(page.getByTestId("entry-composer")).toBeVisible();
+  await expect(page.getByTestId("empty-canvas")).toBeVisible();
   expect((await page.request.get("/api/auth/me")).ok()).toBe(true);
 });
 
@@ -299,5 +299,5 @@ test("settings changes the password and requires a fresh sign-in", async ({ page
   await page.getByTestId("auth-email").fill(email);
   await page.getByTestId("auth-password").fill(next);
   await page.getByTestId("auth-submit").click();
-  await expect(page.getByTestId("entry-composer")).toBeVisible();
+  await expect(page.getByTestId("empty-canvas")).toBeVisible();
 });

@@ -108,14 +108,14 @@ function CardBody({
       className="nodrag nopan min-h-0 flex-1 select-text overflow-y-auto overscroll-contain px-4 py-3 [mask-image:linear-gradient(to_bottom,black_88%,transparent)]"
       style={{ fontSize: `calc(var(--db-reading) * ${fontScale})` }}
     >
+      {(item.origin.question || item.origin.preset?.label) && (
+        <blockquote data-testid={`prompt-${item.id}`} className="db-origin-prompt">
+          <p data-testid={`origin-${item.id}`}>{item.origin.question || item.origin.preset?.label}</p>
+        </blockquote>
+      )}
       {item.origin.selectedText && (
         <div className="db-origin-quote">
           <p data-testid={`reference-${item.id}`}>“{item.origin.selectedText}”</p>
-          {(item.origin.question || item.origin.preset?.label) && (
-            <p data-testid={`origin-${item.id}`}>
-              {item.origin.question || item.origin.preset?.label}
-            </p>
-          )}
         </div>
       )}
       {item.status === "pending" && !text && progress.length > 0 && (

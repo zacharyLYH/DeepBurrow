@@ -3,13 +3,14 @@ import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import type {
-  Burrow,
-  Coords,
-  Node,
-  NodeStatus,
-  Origin,
-  Viewport,
+import {
+  DEFAULT_VIEWPORT,
+  type Burrow,
+  type Coords,
+  type Node,
+  type NodeStatus,
+  type Origin,
+  type Viewport,
 } from "../../../packages/types/src/types.ts";
 import type { ProviderConfig } from "./llm.ts";
 import { seal, unseal } from "./secrets.ts";
@@ -54,6 +55,12 @@ type NodeRow = {
   created_at: number;
   updated_at: number;
 };
+
+// Explicit columns: row shapes above are the contract, not whatever SQLite adds.
+const USER_COLUMNS = "id, email, password_hash, settings, created_at";
+const BURROW_COLUMNS = "id, user_id, title, viewport, created_at, updated_at";
+const NODE_COLUMNS =
+  "id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, position_x, position_y, deleted_at, created_at, updated_at";
 
 export type User = { id: string; email: string };
 export type AuthUser = User & { passwordHash: string };
@@ -107,8 +114,8 @@ const toNode = (row: NodeRow): Node => ({
 
 const authUser = (row: UserRow | undefined): AuthUser | null =>
   row ? { ...toUser(row), passwordHash: row.password_hash } : null;
-const userById = db.prepare("SELECT * FROM users WHERE id = ?");
-const userByEmail = db.prepare("SELECT * FROM users WHERE email = ?");
+const userById = db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`);
+const userByEmail = db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE email = ?`);
 
 export function findUserByEmail(email: string): AuthUser | null {
   return authUser(userByEmail.get(email) as UserRow | undefined);
@@ -155,7 +162,7 @@ export function createAccount(email: string, passwordHash: string): User {
 
 export function primaryBurrow(userId: string): Burrow | null {
   const row = db
-    .prepare("SELECT * FROM burrows WHERE user_id = ? ORDER BY created_at, id LIMIT 1")
+    .prepare(`SELECT ${BURROW_COLUMNS} FROM burrows WHERE user_id = ? ORDER BY created_at, id LIMIT 1`)
     .get(userId) as BurrowRow | undefined;
   return row ? toBurrow(row) : null;
 }
@@ -196,8 +203,8 @@ export function putNode(userId: string, node: Node) {
 const nodeRow = (userId: string, id: string, includeDeleted: boolean) =>
   db
     .prepare(
-      `SELECT n.* FROM nodes n JOIN burrows b ON b.id = n.burrow_id
-       WHERE n.id = ? AND b.user_id = ?${includeDeleted ? "" : " AND n.deleted_at IS NULL"}`,
+      `SELECT ${NODE_COLUMNS} FROM nodes
+       WHERE id = ? AND burrow_id IN (SELECT id FROM burrows WHERE user_id = ?)${includeDeleted ? "" : " AND deleted_at IS NULL"}`,
     )
     .get(id, userId) as NodeRow | undefined;
 
@@ -207,7 +214,7 @@ export function getNode(userId: string, id: string): Node | null {
 }
 
 const burrowRow = (userId: string, id: string) =>
-  db.prepare("SELECT * FROM burrows WHERE id = ? AND user_id = ?").get(id, userId) as
+  db.prepare(`SELECT ${BURROW_COLUMNS} FROM burrows WHERE id = ? AND user_id = ?`).get(id, userId) as
     | BurrowRow
     | undefined;
 
@@ -216,22 +223,44 @@ export function getBurrow(userId: string, id: string): { burrow: Burrow; nodes: 
   if (!row) return null;
   const burrow = toBurrow(row);
   const nodes = db
-    .prepare("SELECT * FROM nodes WHERE burrow_id = ? AND deleted_at IS NULL ORDER BY created_at, id")
+    .prepare(
+      `SELECT ${NODE_COLUMNS} FROM nodes WHERE burrow_id = ? AND deleted_at IS NULL ORDER BY created_at, id`,
+    )
     .all(burrow.id) as NodeRow[];
   return { burrow, nodes: nodes.map(toNode) };
 }
 
-export function writeViewport(userId: string, id: string, viewport: Viewport): Burrow | null {
+export function listBurrows(userId: string): Burrow[] {
+  const rows = db
+    .prepare(`SELECT ${BURROW_COLUMNS} FROM burrows WHERE user_id = ? ORDER BY created_at, id`)
+    .all(userId) as BurrowRow[];
+  return rows.map(toBurrow);
+}
+
+// Case-insensitive per owner; another user may reuse the title.
+export function createBurrow(userId: string, title: string): Burrow {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO burrows (id, user_id, title, viewport, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(id, userId, title, JSON.stringify(DEFAULT_VIEWPORT), now, now);
+  return toBurrow(burrowRow(userId, id)!);
+}
+
+export function patchBurrow(
+  userId: string,
+  id: string,
+  patch: { title?: string; viewport?: Viewport },
+): Burrow | null {
   const row = burrowRow(userId, id);
   if (!row) return null;
-  const json = JSON.stringify(viewport);
-  db.prepare("UPDATE burrows SET viewport = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(
-    json,
-    Date.now(),
-    row.id,
-    userId,
-  );
-  return toBurrow({ ...row, viewport: json });
+  const title = patch.title ?? row.title;
+  const viewport = patch.viewport ? JSON.stringify(patch.viewport) : row.viewport;
+  const updatedAt = Date.now();
+  db.prepare(
+    "UPDATE burrows SET title = ?, viewport = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+  ).run(title, viewport, updatedAt, id, userId);
+  return toBurrow({ ...row, title, viewport, updated_at: updatedAt });
 }
 
 export function readSettings(userId: string): Record<string, unknown> {

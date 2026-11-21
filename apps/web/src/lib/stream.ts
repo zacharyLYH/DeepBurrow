@@ -5,6 +5,7 @@ import { apiFetch } from "./api";
 export type AskInput = {
   nodeId?: string;
   parentId: string | null;
+  burrowId?: string;
   origin: Origin;
 };
 

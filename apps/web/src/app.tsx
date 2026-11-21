@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { titleFromAsk } from "@deepburrow/types";
 import { useReactFlow } from "@xyflow/react";
 import { apiFetch, onAuthExpired, type Session } from "@/lib/api";
 import { AuthScreen } from "@/components/auth-screen";
+import { BurrowSidebar } from "@/components/burrow-sidebar";
 import { AskPopover } from "@/components/ask-popover";
 import { Canvas } from "@/components/canvas";
 import { Lightbox } from "@/components/markdown";
 import type { CardActions } from "@/components/node-card";
-import { EntryComposer, Shortcuts } from "@/components/overlays";
+import { NewBurrowDialog } from "@/components/new-burrow-dialog";
+import { EmptyCanvas, Shortcuts } from "@/components/overlays";
 import { Palette } from "@/components/palette";
 import { SettingsSheet } from "@/components/settings-sheet";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toolbar } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import { Toaster, toast } from "@/components/ui/sonner";
@@ -19,6 +23,8 @@ import { loadSettings, presetsFor, resetSettings, toggleTheme, useSettings } fro
 import { usePassageSelection } from "@/lib/use-passage";
 import { useShortcuts } from "@/lib/use-shortcuts";
 import { useBurrow } from "@/lib/use-burrow";
+import { recallBurrow, rememberBurrow, useBurrows } from "@/lib/use-burrows";
+import { ask as askApi } from "@/lib/stream";
 
 const FIT = { padding: 0.12, duration: 250 };
 type Overlay = "palette" | "settings" | "shortcuts";
@@ -86,7 +92,112 @@ export function App({
   session: Session;
   onSignOut: (notice?: string) => void;
 }) {
-  const burrow = useBurrow(session.burrowId);
+  const { burrows, loading, loadError, reload, create, rename } = useBurrows();
+  const [selectedId, setSelectedId] = useState(() => recallBurrow(session.user.id));
+  const [newOpen, setNewOpen] = useState(false);
+
+  useEffect(() => {
+    void loadSettings();
+  }, []);
+
+  // The stored id wins when it still exists; otherwise the account's first
+  // burrow. Selecting writes the id for this user on this device only.
+  const selected = useMemo(
+    () =>
+      burrows.find((burrow) => burrow.id === selectedId) ??
+      burrows.find((burrow) => burrow.id === session.burrowId) ??
+      burrows[0] ??
+      null,
+    [burrows, selectedId, session.burrowId],
+  );
+
+  const select = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      rememberBurrow(session.user.id, id);
+    },
+    [session.user.id],
+  );
+
+  // A new burrow starts with its first question. The row is stored by the first
+  // pending event; the canvas then loads it and attaches to the same run.
+  const startBurrow = async (question: string) => {
+    const result = await create(titleFromAsk(question) || "New burrow");
+    if ("error" in result) return result.error;
+    const burrowId = result.burrow.id;
+    const controller = new AbortController();
+    await new Promise<void>((resolve) => {
+      void askApi(
+        { parentId: null, burrowId, origin: { question } },
+        controller.signal,
+        (event) => {
+          if (event.type !== "node.pending") return;
+          controller.abort();
+          resolve();
+        },
+      )
+        .catch(() => undefined)
+        .finally(resolve);
+    });
+    select(burrowId);
+    return null;
+  };
+
+  if (loading) return <Notice>Loading burrows…</Notice>;
+  if (loadError) {
+    return (
+      <Notice>
+        Couldn&apos;t load burrows.
+        <Button size="sm" variant="outline" onClick={reload}>
+          Retry
+        </Button>
+      </Notice>
+    );
+  }
+  if (!selected) return <Notice>No burrows yet.</Notice>;
+
+  return (
+    <div data-testid="app" className="h-dvh w-full overflow-hidden">
+      <SidebarProvider>
+        <BurrowSidebar
+          burrows={burrows}
+          selectedId={selected.id}
+          selectedTitle={selected.title}
+          onSelect={select}
+          onNew={() => setNewOpen(true)}
+          onRename={rename}
+        />
+        <SidebarInset>
+          <Workspace
+            key={selected.id}
+            session={session}
+            burrowId={selected.id}
+            title={selected.title}
+            onNew={() => setNewOpen(true)}
+            onSignOut={onSignOut}
+          />
+        </SidebarInset>
+        <NewBurrowDialog open={newOpen} onOpenChange={setNewOpen} onCreate={startBurrow} />
+        <Toaster />
+      </SidebarProvider>
+    </div>
+  );
+}
+
+function Workspace({
+  session,
+  burrowId,
+  title,
+  onNew,
+  onSignOut,
+}: {
+  session: Session;
+  burrowId: string;
+  title: string;
+  onNew: () => void;
+  onSignOut: (notice?: string) => void;
+}) {
+  const burrow = useBurrow(burrowId);
   const settings = useSettings();
   const { fitView, setCenter } = useReactFlow();
 
@@ -95,10 +206,6 @@ export function App({
   const byId = useMemo(() => new Map(burrow.nodes.map((node) => [node.id, node])), [burrow.nodes]);
   const lastId = burrow.nodes.at(-1)?.id;
   const { passage, clearPassage } = usePassageSelection();
-
-  useEffect(() => {
-    void loadSettings();
-  }, []);
 
   // The server owns the camera: the canvas starts at the stored viewport and
   // every later move writes back. Writes stay off until React Flow is ready.
@@ -150,7 +257,7 @@ export function App({
     },
   };
 
-  const download = () => exportBurrowHtml(burrow.title);
+  const download = () => exportBurrowHtml(title);
 
   useShortcuts({
     palette: () => setOverlay((open) => (open === "palette" ? null : "palette")),
@@ -174,9 +281,9 @@ export function App({
   }
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden">
+    <div data-testid="workspace" className="relative h-full w-full">
       {burrow.nodes.length === 0 ? (
-        <EntryComposer onSubmit={(question) => burrow.ask(null, question)} />
+        <EmptyCanvas onNew={onNew} />
       ) : (
         <Canvas
           nodes={burrow.nodes}
@@ -190,13 +297,6 @@ export function App({
           onReady={() => setCameraReady(true)}
         />
       )}
-
-      <div
-        data-testid="burrow-title"
-        className="pointer-events-none absolute left-4 top-3 z-10 hidden text-sm text-muted-foreground sm:block"
-      >
-        {burrow.title}
-      </div>
 
       <Toolbar
         onFit={() => void fitView(FIT)}
@@ -241,7 +341,6 @@ export function App({
       />
       <Shortcuts open={overlay === "shortcuts"} onClose={() => setOverlay(null)} />
       <Lightbox />
-      <Toaster />
     </div>
   );
 }

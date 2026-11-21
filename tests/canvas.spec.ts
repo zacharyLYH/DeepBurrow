@@ -42,8 +42,9 @@ test("pans and zooms the plane", async ({ page }) => {
 
   const box = await page.locator(".react-flow__pane").boundingBox();
   if (!box) throw new Error("no pane");
+  // Bottom-right corner: the card row sits above it at every zoom.
   const startX = box.x + box.width - 40;
-  const startY = box.y + box.height / 2;
+  const startY = box.y + box.height - 40;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.mouse.move(startX - 140, startY, { steps: 10 });

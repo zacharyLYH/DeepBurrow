@@ -1,5 +1,5 @@
 import { NODE_STEP } from "./layout.ts";
-import type { Burrow, Node } from "./types.ts";
+import { DEFAULT_VIEWPORT, type Burrow, type Node } from "./types.ts";
 
 const T = 1_760_000_000_000;
 
@@ -21,6 +21,27 @@ export const fixtureBurrow: Burrow = {
   createdAt: T,
   updatedAt: T,
 };
+
+// The demo account owns several burrows; only the first has cards.
+export const fixtureBurrows: Burrow[] = [
+  fixtureBurrow,
+  {
+    id: "burrow_second",
+    userId: "user_fixture",
+    title: "QUIC transport",
+    viewport: { ...DEFAULT_VIEWPORT },
+    createdAt: T + 10,
+    updatedAt: T + 10,
+  },
+  {
+    id: "burrow_third",
+    userId: "user_fixture",
+    title: "BBR vs CUBIC",
+    viewport: { ...DEFAULT_VIEWPORT },
+    createdAt: T + 20,
+    updatedAt: T + 20,
+  },
+];
 
 export const fixtureNodes: Node[] = [
   {

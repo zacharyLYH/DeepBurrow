@@ -15,6 +15,7 @@ test("copy card from the menu is raw Markdown", async ({ page }) => {
 
   const text = await clipboard(page);
   expect(text.startsWith("## TCP congestion control")).toBe(true);
+  expect(text).toContain("> How does TCP congestion control work?");
   expect(text).toContain("RFC 5681");
   await expect(card(page, rootId)).toBeVisible();
 });

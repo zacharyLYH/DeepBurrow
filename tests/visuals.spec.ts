@@ -67,6 +67,49 @@ test("timed out card explains itself", async ({ page }) => {
   await shot(page, "timeout-card.png");
 });
 
+test("burrows sidebar expanded", async ({ page }) => {
+  await open(page);
+  const sidebar = page.getByTestId("burrow-sidebar");
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  await expect(sidebar.locator('[data-testid^="burrow-row-"]')).toHaveCount(3);
+  await expect(page.getByTestId(`prompt-${rootId}`)).toContainText(
+    "How does TCP congestion control work?",
+  );
+  await shot(page, "burrows-expanded.png");
+});
+
+test("burrows sidebar collapsed", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("open-burrows").click();
+  await expect(page.getByTestId("burrow-sidebar")).toHaveAttribute("data-state", "collapsed");
+  await expect(page.getByTestId(`prompt-${rootId}`)).toBeVisible();
+  await shot(page, "burrows-collapsed.png");
+});
+
+test("empty canvas offers a new burrow", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("burrow-row-burrow_second").click();
+  await expect(page.getByTestId("empty-canvas")).toBeVisible();
+  await shot(page, "empty-canvas.png");
+});
+
+test("new burrow modal", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("new-burrow").click();
+  await expect(page.getByTestId("new-burrow-dialog")).toBeVisible();
+  await shot(page, "new-burrow-dialog.png");
+});
+
+test("new burrow first message is sending", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("new-burrow").click();
+  await page.getByTestId("new-burrow-input").fill("How does TCP congestion control work?");
+  await page.getByTestId("new-burrow-submit").click();
+  await expect(cards(page)).toHaveCount(1);
+  await expect(cards(page).last()).toHaveAttribute("data-status", "pending");
+  await shot(page, "new-burrow-sending.png");
+});
+
 const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];
 
 test.describe("mobile", () => {
@@ -149,5 +192,47 @@ test.describe("mobile", () => {
 
     await jump(page, "Explain");
     await shot(page, "reference-card-mobile.png");
+  });
+
+  test("burrow sheet lists burrows above the selected card prompt", async ({ page }) => {
+    await open(page);
+    await jump(page, "TCP congestion control");
+    await page.getByTestId("open-burrows").tap();
+
+    const sheet = page.getByRole("dialog", { name: "Burrows" });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.locator('[data-testid^="burrow-row-"]')).toHaveCount(3);
+    await expect(page.getByTestId(`prompt-${rootId}`)).toContainText(
+      "How does TCP congestion control work?",
+    );
+    await shot(page, "burrows-sheet-mobile.png");
+  });
+
+  test("empty canvas offers a new burrow", async ({ page }) => {
+    await open(page);
+    await page.getByTestId("open-burrows").tap();
+    const sheet = page.getByRole("dialog", { name: "Burrows" });
+    await sheet.getByTestId("burrow-row-burrow_second").tap();
+    await expect(page.getByTestId("empty-canvas")).toBeVisible();
+    await shot(page, "empty-canvas-mobile.png");
+  });
+
+  test("new burrow modal", async ({ page }) => {
+    await open(page);
+    await page.getByTestId("open-burrows").tap();
+    await page.getByTestId("new-burrow").tap();
+    await expect(page.getByTestId("new-burrow-dialog")).toBeVisible();
+    await shot(page, "new-burrow-dialog-mobile.png");
+  });
+
+  test("new burrow first message is sending", async ({ page }) => {
+    await open(page);
+    await page.getByTestId("open-burrows").tap();
+    await page.getByTestId("new-burrow").tap();
+    await page.getByTestId("new-burrow-input").fill("How does TCP congestion control work?");
+    await page.getByTestId("new-burrow-submit").tap();
+    await expect(cards(page)).toHaveCount(1);
+    await expect(cards(page).last()).toHaveAttribute("data-status", "pending");
+    await shot(page, "new-burrow-sending-mobile.png");
   });
 });

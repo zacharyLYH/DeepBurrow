@@ -40,6 +40,8 @@ test("export downloads a standalone readable document", async ({ page }) => {
   const { path, html } = await exportHtml(page, "burrow.html");
 
   for (const node of fixtureNodes) expect(html).toContain(node.title);
+  expect(html).toContain("How does TCP congestion control work?");
+  expect(html).toContain("db-origin-prompt");
   expect(html).toContain('href="https://www.rfc-editor.org/rfc/rfc5681"');
   expect(html).toContain('<html lang="en" data-theme="light">');
   expect(html).toContain("<style>");

@@ -1,5 +1,6 @@
 import { useReactFlow, useViewport } from "@xyflow/react";
 import { Button } from "@/components/ui/button";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { toggleTheme, useSettings } from "@/lib/settings";
 
 function ThemeIcon({ dark }: { dark: boolean }) {
@@ -54,6 +55,7 @@ export function Toolbar({
   return (
     <div data-testid="toolbar" className="db-toolbar">
       <div className="db-toolbar-group">
+        <SidebarTrigger />
         <Button aria-label="Zoom out" title="Zoom out" size="xs" variant="ghost" onClick={() => void zoomOut({ duration: 150 })}>
           −
         </Button>

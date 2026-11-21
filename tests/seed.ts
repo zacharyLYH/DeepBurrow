@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { hashPassword } from "../apps/api/src/security.ts";
 import { seal } from "../apps/api/src/secrets.ts";
-import { demoCredentials, fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
+import { demoCredentials, fixtureBurrow, fixtureBurrows, fixtureNodes } from "../packages/types/src/fixtures.ts";
 import { MOCK_API_KEY, MOCK_PROVIDER_URL } from "./mock-provider.ts";
 
 const migrations = fileURLToPath(new URL("../db/migrations/", import.meta.url));
@@ -38,22 +38,23 @@ export function seedDemo(dataDir: string) {
       mockKey,
       Date.now(),
     );
-    db.prepare(
+    // Fixtures are the only burrows: stale rows and their nodes cascade away.
+    db.prepare("DELETE FROM burrows WHERE user_id = ?").run(fixtureBurrow.userId);
+    const insertBurrow = db.prepare(
       `INSERT INTO burrows (id, user_id, title, viewport, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         user_id = excluded.user_id, title = excluded.title,
-         viewport = excluded.viewport, updated_at = excluded.updated_at`,
-    ).run(
-      fixtureBurrow.id,
-      fixtureBurrow.userId,
-      fixtureBurrow.title,
-      JSON.stringify(fixtureBurrow.viewport),
-      fixtureBurrow.createdAt,
-      fixtureBurrow.updatedAt,
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
+    for (const burrow of fixtureBurrows) {
+      insertBurrow.run(
+        burrow.id,
+        burrow.userId,
+        burrow.title,
+        JSON.stringify(burrow.viewport),
+        burrow.createdAt,
+        burrow.updatedAt,
+      );
+    }
     db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run(fixtureBurrow.userId);
-    db.prepare("DELETE FROM nodes WHERE burrow_id = ?").run(fixtureBurrow.id);
 
     const insert = db.prepare(
       `INSERT INTO nodes

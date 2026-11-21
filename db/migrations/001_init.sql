@@ -43,6 +43,9 @@ CREATE INDEX IF NOT EXISTS nodes_by_delete ON nodes(deleted_at);
 
 CREATE INDEX IF NOT EXISTS burrows_by_user ON burrows(user_id, created_at);
 
+-- Titles are unique per owner, case-insensitively. Different users may share one.
+CREATE UNIQUE INDEX IF NOT EXISTS burrows_unique_title ON burrows(user_id, lower(title));
+
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

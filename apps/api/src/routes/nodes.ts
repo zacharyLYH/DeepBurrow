@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { TITLE_MAX } from "../../../../packages/types/src/types.ts";
 import type { AuthEnv } from "../auth.ts";
 import { deleteBranch, getNode, patchNode, restoreBranch } from "../db.ts";
 import { cancelRun } from "../runs.ts";
@@ -6,8 +7,6 @@ import { streamNode } from "../stream.ts";
 import { isCoords } from "../validation.ts";
 
 type NodePatch = { title?: unknown; position?: unknown };
-
-const MAX_TITLE = 80;
 
 export const nodeRoutes = new Hono<AuthEnv>();
 
@@ -18,7 +17,7 @@ nodeRoutes.patch("/:id", async (c) => {
   if (body.title !== undefined) {
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) return c.json({ error: "title required" }, 400);
-    if (title.length > MAX_TITLE) return c.json({ error: "title too long" }, 400);
+    if (title.length > TITLE_MAX) return c.json({ error: "title too long" }, 400);
     patch.title = title;
   }
   if (body.position !== undefined) {

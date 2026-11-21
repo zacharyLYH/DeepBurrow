@@ -6,19 +6,19 @@ Reference UX: `~/Desktop/rabbithole` (vanilla JS + esbuild). We keep its feel an
 
 ## Product
 
-- One infinite canvas of cards. Cards branch from a question or a selected passage.
+- Multiple user-owned burrows, each with an infinite canvas of cards. Cards branch from a question or a selected passage.
 - Long answers scroll inside the card. No separate reader view.
 - Cloud sync, editable system prompts, installable PWA.
 - Web app only. No MCP, `.rabbithole` export, PNG/SVG, or share links.
 - Agents and keys stay server-side. BYO search.
-- Input is a plain-text question or a file; the composer does not parse Markdown or links.
+- Input is a plain-text question. File uploads are not supported yet.
 - Answers may render GFM, tables, code, KaTeX and Mermaid. Raw HTML is inert.
 
 ## Flow
 
 1. Sign in with email and password; change the password in Settings. Sessions use short-lived access cookies and rotating refresh credentials.
 2. Connect an OpenAI-compatible provider (base URL, model, key). The backend verifies it.
-3. Ask a question or attach a file.
+3. Ask a question.
 4. The backend agent researches; tool calls never reach the browser.
 5. The answer streams into a card with title, sources and follow-ups.
 6. Branch from the answer or a selection. Context is the lineage root→node, never siblings.
@@ -33,16 +33,18 @@ flowchart LR
 
 ## Canvas
 
-- **Entry.** Empty burrow = one composer → root card.
+- **Entry.** An empty canvas offers a new-burrow action; the modal takes a question or link and opens the canvas on the pending root card.
+- **Burrows.** A collapsible sidebar lists the user's burrows; titles are unique per user.
 - **Asking.** Select text → popover with input and preset pills (`1–3`). The child keeps the selected passage as its reference; the pending card sits beside its source.
-- **Card.** Fixed head strip, scrollable body, sources, follow-up chips and a discreet follow-up button.
-- **Notes.** One margin note per card, human or agent, fed to later prompts.
+- **Card.** Fixed head strip, the user's prompt as a Markdown quote, scrollable answer, sources, follow-up chips and a discreet follow-up button.
 - **Presets.** Label + instruction, two sets (selection, follow-up), linkable.
 - **⌘K.** Search titles, origin questions and answers; run canvas commands.
 - **Canvas.** Drag; cards size to their content. Positions and the camera live on the server, so a reload lands where you left it.
 - **Edit.** Rename inline; delete a branch and undo.
 - **Export.** Download the rendered canvas as a standalone HTML document; text stays selectable and links work without the app. A small inline script adds theme, text-size, zoom, and image-lightbox controls; the page remains readable with JS off.
 - **States.** `pending → answered | stopped | failed`. Failure keeps a reason and Retry; stopping keeps partial text.
+
+Notes, reactions, and file uploads are deferred and have no scheduled milestone.
 
 ## Answer contract
 

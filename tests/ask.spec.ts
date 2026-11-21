@@ -84,7 +84,7 @@ test("stop keeps partial text, hides retry, and survives reload", async ({ page 
 
   await card.locator('[data-testid^="stop-"]').click();
   await expect(card).toHaveAttribute("data-status", "stopped");
-  const partial = (await card.locator('[data-slot="card-content"]').innerText()).trim();
+  const partial = (await card.locator('[data-testid^="body-"] .db-markdown').innerText()).trim();
   expect(partial.length).toBeGreaterThan(0);
   await expect(card.locator('[data-testid^="retry-"]')).toHaveCount(0);
   await expect(await openDrawer(card)).toBeVisible();
@@ -92,7 +92,9 @@ test("stop keeps partial text, hides retry, and survives reload", async ({ page 
   await page.reload();
   const reloaded = page.locator('[data-testid^="card-"]').filter({ hasText: title }).first();
   await expect(reloaded).toHaveAttribute("data-status", "stopped", { timeout: 10000 });
-  await expect(reloaded.locator('[data-slot="card-content"]')).toContainText(partial.slice(0, 24));
+  await expect(reloaded.locator('[data-testid^="body-"] .db-markdown')).toContainText(
+    partial.slice(0, 24),
+  );
 });
 
 test("stop before any token settles stopped", async ({ page }) => {
@@ -102,7 +104,9 @@ test("stop before any token settles stopped", async ({ page }) => {
 
   await card.locator('[data-testid^="stop-"]').click();
   await expect(card).toHaveAttribute("data-status", "stopped");
-  await expect(card.locator('[data-testid^="body-"]')).toHaveText("");
+  // The prompt is presentation, not answer text: it stays, the body does not.
+  await expect(card.locator('[data-testid^="prompt-"]')).toContainText("What is additive increase?");
+  await expect(card.locator(".db-markdown")).toHaveText("");
 });
 
 test("reloading during research reattaches and finishes", async ({ page }) => {

@@ -18,7 +18,7 @@ Build the whole loop first: ask → answer card. Then split at the contract: FE 
 | M5 | Parity + durable graph | Reference flows match or every delta is logged; rename/delete/layout survive a fresh client |
 | M6 | Auth + user isolation | Password accounts, refreshable sessions, password change, every query scoped to the signed-in user |
 | M7 | Search + BYOK + LLM loop | Search filters sources; verified model key drives the real judge/search/compose loop |
-| M8 | Notes + assets | Notes feed prompts; files/PDF/images/URLs become origins |
+| M8 | Burrows + visible prompts | Per-user unique burrow titles, collapsible sidebar, and prompt quotes in node cards; desktop/mobile E2E screenshots |
 | M9 | PWA | Install + hidden-tab completion notification |
 
 ## Where a feature goes
@@ -36,7 +36,7 @@ flowchart TD
   D -- no --> E{What external piece?}
   E -- auth, user data --> I6[M6 auth milestone]
   E -- search, model --> I7[M7 integration milestone]
-  E -- notes, files --> A[Authoring milestone]
+  E -- notes, files --> A[Deferred / unscheduled]
   E -- PWA --> P[Last]
 ```
 
@@ -45,7 +45,7 @@ flowchart TD
 | Nothing, or graph data / contract shape | Current milestone |
 | Auth and user isolation | M6 |
 | Search, real model, BYOK | M7 integration |
-| Notes, reactions, files | Authoring |
+| Notes, reactions, file uploads | Deferred / unscheduled |
 | PWA | Last |
 | A permanent product rule | README |
 | Not a branch on the canvas | Never |
@@ -66,8 +66,8 @@ flowchart LR
   Loop --> Parity
   C --> Auth[Auth + user isolation]
   Auth --> Search[Search + BYOK + LLM loop]
-  Search --> Author[Notes + assets]
-  Author --> PWA[PWA]
+  Search --> Prompt[Prompt visible in cards]
+  Prompt --> PWA[PWA]
 ```
 
 ## Sizing
