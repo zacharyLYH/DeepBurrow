@@ -16,10 +16,12 @@ Build the whole loop first: ask → answer card. Then split at the contract: FE 
 | M3 | Backend cutover | Real BE + fake model; reload and retry work |
 | M4 | Loop | Judge, rounds, progress lines; no stuck cards |
 | M5 | Parity + durable graph | Reference flows match or every delta is logged; rename/delete/layout survive a fresh client |
-| M6 | Auth + user isolation | Password accounts, refreshable sessions, password change, every query scoped to the signed-in user |
+| M6 | Auth + user isolation | User accounts, refreshable sessions, every query scoped to the signed-in user |
 | M7 | Search + BYOK + LLM loop | Search filters sources; verified model key drives the real judge/search/compose loop |
 | M8 | Burrows + visible prompts | Per-user unique burrow titles, collapsible sidebar, and prompt quotes in node cards; desktop/mobile E2E screenshots |
-| M9 | PWA | Install + hidden-tab completion notification |
+| M9 | Email auth + providers | Six-digit email login, provider/settings behavior, explicit user schema |
+| M10 | Public landing + demo | Minimal public page and reproducible Playwright walkthrough video |
+| M11 | PWA + push | Installable app, opt-in Web Push, completion notifications, VAPID setup |
 
 ## Where a feature goes
 
@@ -34,7 +36,8 @@ flowchart TD
   C -- no --> D{Needs only graph data<br/>or a contract change?}
   D -- yes --> M2[Current milestone + contract change]
   D -- no --> E{What external piece?}
-  E -- auth, user data --> I6[M6 auth milestone]
+  E -- auth, user isolation --> I6[M6 identity boundary]
+  E -- email login, provider settings --> I9[M9 account setup]
   E -- search, model --> I7[M7 integration milestone]
   E -- notes, files --> A[Deferred / unscheduled]
   E -- PWA --> P[Last]
@@ -44,6 +47,7 @@ flowchart TD
 |---|---|
 | Nothing, or graph data / contract shape | Current milestone |
 | Auth and user isolation | M6 |
+| Email-code login and provider/settings refactor | M9 |
 | Search, real model, BYOK | M7 integration |
 | Notes, reactions, file uploads | Deferred / unscheduled |
 | PWA | Last |
@@ -67,7 +71,9 @@ flowchart LR
   C --> Auth[Auth + user isolation]
   Auth --> Search[Search + BYOK + LLM loop]
   Search --> Prompt[Prompt visible in cards]
-  Prompt --> PWA[PWA]
+  Prompt --> Accounts[Email auth + provider settings]
+  Accounts --> Landing[Public landing + demo]
+  Landing --> PWA[PWA + push]
 ```
 
 ## Sizing

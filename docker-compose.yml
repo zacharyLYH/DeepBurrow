@@ -3,10 +3,11 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    env_file:
+      - apps/api/.env
     environment:
       PORT: "8787"
       DATA_DIR: /data
-      AUTH_SECRET: "${AUTH_SECRET:?set AUTH_SECRET to a random value of at least 32 characters}"
     volumes:
       - db:/data
     restart: unless-stopped

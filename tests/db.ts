@@ -43,10 +43,11 @@ const read = <T>(sql: string, ...params: (string | number)[]) => {
 
 // Tests that assert on server rows (rename, delete, position) read them here.
 export const readProviderRow = () =>
-  read<{ base_url: string | null; model: string | null; api_key_enc: Uint8Array | null }>(
-    "SELECT base_url, model, api_key_enc FROM users WHERE id = ?",
-    fixtureBurrow.userId,
-  );
+  read<{
+    model_base_url: string | null;
+    model_name: string | null;
+    model_api_key_enc: Uint8Array | null;
+  }>("SELECT model_base_url, model_name, model_api_key_enc FROM users WHERE id = ?", fixtureBurrow.userId);
 
 export const readNodeRow = (id: string) =>
   read<{ title: string; deleted_at: number | null; position_x: number; position_y: number }>(
@@ -54,21 +55,27 @@ export const readNodeRow = (id: string) =>
     id,
   );
 
-// Theme, reading size and presets live on the user row, not in the browser.
-export function readSettings() {
-  const row = read<{ settings: string }>(
-    "SELECT settings FROM users WHERE email = ?",
+type SettingsRow = {
+  theme: string;
+  reading_size: number;
+  presets_linked: number;
+  selection_presets: string | null;
+  followup_presets: string | null;
+};
+
+// Tests assert the stored columns directly, not a remapped shape.
+export const readSettingsRow = () =>
+  read<SettingsRow>(
+    "SELECT theme, reading_size, presets_linked, selection_presets, followup_presets FROM users WHERE email = ?",
     demoCredentials.email,
   );
-  return JSON.parse(row?.settings ?? "{}") as Record<string, unknown>;
-}
 
 // Used by the one test that proves asking without a provider fails clearly.
 export function clearProviders() {
   const db = new DatabaseSync(TEST_DB_PATH);
   try {
     db.prepare(
-      "UPDATE users SET base_url = NULL, model = NULL, api_key_enc = NULL, verified_at = NULL, search = '{}'",
+      "UPDATE users SET model_base_url = NULL, model_name = NULL, model_api_key_enc = NULL, search_base_url = NULL, search_model = NULL, search_api_key_enc = NULL",
     ).run();
   } finally {
     db.close();

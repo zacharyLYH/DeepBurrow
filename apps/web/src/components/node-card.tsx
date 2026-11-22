@@ -25,6 +25,7 @@ export type CardActions = {
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onCopyCard: (id: string) => void;
+  onSettings: () => void;
 };
 
 export type CardNodeData = {
@@ -326,6 +327,9 @@ export const NodeCard = memo(function NodeCard({ data }: NodeProps<CardFlowNode>
             <span className="min-w-0 flex-1 truncate text-[11px] text-destructive">
               Failed: {item.error}
             </span>
+            <Button data-testid={`settings-${item.id}`} size="xs" variant="outline" onClick={data.onSettings}>
+              Settings
+            </Button>
           </div>
         )}
       </Card>

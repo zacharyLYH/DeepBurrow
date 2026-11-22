@@ -64,7 +64,11 @@ test("deleting one card leaves its siblings", async () => {
 });
 
 test("settings merge on the user row", async () => {
-  expect(((await (await call("/settings")).json()) as { settings: unknown }).settings).toEqual({});
+  expect(((await (await call("/settings")).json()) as { settings: unknown }).settings).toEqual({
+    theme: "light",
+    readingSize: 1,
+    presets: { link: false },
+  });
 
   const first = await call("/settings", "PATCH", {
     theme: "dark",

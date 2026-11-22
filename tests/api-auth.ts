@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { demoCredentials } from "../packages/types/src/fixtures.ts";
+import { latestCode } from "./mock-smtp.ts";
 
 type App = { fetch: (request: Request) => Response | Promise<Response> };
 
@@ -24,19 +25,23 @@ export function readCookies(headers: Headers): CookieJar {
   };
 }
 
-const signInRequest = {
+const json = (body: unknown): RequestInit => ({
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify(demoCredentials),
-};
+  body: JSON.stringify(body),
+});
 
-const demoSession = async (response: Response | Promise<Response>) => {
-  const value = await response;
-  expect(value.ok).toBe(true);
-  return readCookies(value.headers).cookie;
+const cookieFor = async (send: (path: string, init: RequestInit) => Promise<Response>) => {
+  const email = demoCredentials.email;
+  expect((await send("/auth/email", json({ email }))).status).toBe(202);
+  const code = await latestCode(email);
+  const response = await send("/auth/verify", json({ email, code }));
+  expect(response.ok).toBe(true);
+  return readCookies(response.headers).cookie;
 };
 
 export const demoCookie = (app: App) =>
-  demoSession(app.fetch(new Request("http://api/auth/sign-in", signInRequest)));
+  cookieFor(async (path, init) => app.fetch(new Request(`http://api${path}`, init)));
 
-export const remoteCookie = (url: string) => demoSession(fetch(`${url}/auth/sign-in`, signInRequest));
+export const remoteCookie = (url: string) =>
+  cookieFor(async (path, init) => fetch(`${url}${path}`, init));

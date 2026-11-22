@@ -1,6 +1,7 @@
 import { devices, expect, test } from "@playwright/test";
-import { resetDemoBurrow } from "./db.ts";
-import { ask, cards, jump, menu, open, rootId, selectPassage } from "./helpers.ts";
+import { demoCredentials } from "../packages/types/src/fixtures.ts";
+import { clearProviders, resetDemoBurrow } from "./db.ts";
+import { ask, cards, jump, menu, open, rootId, selectPassage, signIn } from "./helpers.ts";
 
 // High-signal chrome states. Whole viewport, animations frozen.
 test.beforeEach(() => resetDemoBurrow());
@@ -8,11 +9,40 @@ test.beforeEach(() => resetDemoBurrow());
 const shot = async (page: import("@playwright/test").Page, name: string) =>
   expect(page).toHaveScreenshot(name, { animations: "disabled" });
 
+test("login page", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("auth-screen")).toBeVisible();
+  await shot(page, "login.png");
+});
+
+test("account creation code page", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("auth-email").fill(demoCredentials.email);
+  await page.getByTestId("auth-submit").click();
+  await expect(page.getByTestId("auth-code")).toBeVisible();
+  await shot(page, "code-entry.png");
+});
+
 test("settings sheet", async ({ page }) => {
   await open(page);
   await page.getByTestId("open-settings").click();
   await expect(page.getByTestId("settings")).toBeVisible();
+  await expect(page.getByTestId("settings-providers")).toBeVisible();
   await shot(page, "settings-sheet.png");
+});
+
+test("workspace without a model shows a centered dismissible prompt", async ({ page }) => {
+  clearProviders();
+  await signIn(page);
+  await page.goto("/");
+  await expect(page.getByTestId("model-prompt")).toBeVisible();
+  await shot(page, "model-prompt.png");
+
+  await page.getByTestId("model-prompt-open").click();
+  await expect(page.getByTestId("model-base-url")).toBeVisible();
+  await shot(page, "model-settings.png");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings")).toHaveCount(0);
 });
 
 test("command palette", async ({ page }) => {
@@ -115,10 +145,37 @@ const { defaultBrowserType: _browser, ...iphone13 } = devices["iPhone 13"];
 test.describe("mobile", () => {
   test.use(iphone13);
 
+  test("login page", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("auth-screen")).toBeVisible();
+    await shot(page, "login-mobile.png");
+  });
+
+  test("account creation code page", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("auth-email").fill(demoCredentials.email);
+    await page.getByTestId("auth-submit").tap();
+    await expect(page.getByTestId("auth-code")).toBeVisible();
+    await shot(page, "code-entry-mobile.png");
+  });
+
+  test("workspace without a model prompt", async ({ page }) => {
+    clearProviders();
+    await signIn(page);
+    await page.goto("/");
+    await expect(page.getByTestId("model-prompt")).toBeVisible();
+    await shot(page, "model-prompt-mobile.png");
+
+    await page.getByTestId("model-prompt-open").tap();
+    await expect(page.getByTestId("model-base-url")).toBeVisible();
+    await shot(page, "model-settings-mobile.png");
+  });
+
   test("settings sheet", async ({ page }) => {
     await open(page);
     await page.getByTestId("open-settings").tap();
     await expect(page.getByTestId("settings")).toBeVisible();
+    await expect(page.getByTestId("settings-providers")).toBeVisible();
     await shot(page, "settings-sheet-mobile.png");
   });
 

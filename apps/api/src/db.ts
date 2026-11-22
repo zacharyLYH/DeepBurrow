@@ -10,6 +10,8 @@ import {
   type Node,
   type NodeStatus,
   type Origin,
+  type Preset,
+  type UserSettings,
   type Viewport,
 } from "../../../packages/types/src/types.ts";
 import type { ProviderConfig } from "./llm.ts";
@@ -18,8 +20,6 @@ import { seal, unseal } from "./secrets.ts";
 type UserRow = {
   id: string;
   email: string;
-  password_hash: string;
-  settings: string;
   created_at: number;
 };
 
@@ -33,9 +33,12 @@ type BurrowRow = {
 };
 
 type ProviderRow = {
-  base_url: string | null;
-  model: string | null;
-  api_key_enc: Uint8Array | null;
+  model_base_url: string | null;
+  model_name: string | null;
+  model_api_key_enc: Uint8Array | null;
+  search_base_url: string | null;
+  search_model: string | null;
+  search_api_key_enc: Uint8Array | null;
 };
 
 type NodeRow = {
@@ -57,13 +60,12 @@ type NodeRow = {
 };
 
 // Explicit columns: row shapes above are the contract, not whatever SQLite adds.
-const USER_COLUMNS = "id, email, password_hash, settings, created_at";
+const USER_COLUMNS = "id, email, created_at";
 const BURROW_COLUMNS = "id, user_id, title, viewport, created_at, updated_at";
 const NODE_COLUMNS =
   "id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, position_x, position_y, deleted_at, created_at, updated_at";
 
 export type User = { id: string; email: string };
-export type AuthUser = User & { passwordHash: string };
 export type RefreshRecord = {
   tokenId: string;
   sessionId: string;
@@ -112,13 +114,12 @@ const toNode = (row: NodeRow): Node => ({
   updatedAt: row.updated_at,
 });
 
-const authUser = (row: UserRow | undefined): AuthUser | null =>
-  row ? { ...toUser(row), passwordHash: row.password_hash } : null;
 const userById = db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`);
 const userByEmail = db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE email = ?`);
 
-export function findUserByEmail(email: string): AuthUser | null {
-  return authUser(userByEmail.get(email) as UserRow | undefined);
+export function findUserByEmail(email: string): User | null {
+  const row = userByEmail.get(email) as UserRow | undefined;
+  return row ? toUser(row) : null;
 }
 
 export function getUser(id: string): User | null {
@@ -126,22 +127,16 @@ export function getUser(id: string): User | null {
   return row ? toUser(row) : null;
 }
 
-export function getAuthUser(id: string): AuthUser | null {
-  return authUser(userById.get(id) as UserRow | undefined);
-}
-
-export function setPassword(userId: string, passwordHash: string) {
-  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
-}
-
-export function createAccount(email: string, passwordHash: string): User {
+export function createAccount(email: string): User {
   const id = randomUUID();
   const now = Date.now();
   db.exec("BEGIN");
   try {
-    db.prepare(
-      "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-    ).run(id, email, passwordHash, now);
+    db.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").run(
+      id,
+      email,
+      now,
+    );
     db.prepare(
       "INSERT INTO burrows (id, user_id, title, viewport, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
@@ -263,28 +258,69 @@ export function patchBurrow(
   return toBurrow({ ...row, title, viewport, updated_at: updatedAt });
 }
 
-export function readSettings(userId: string): Record<string, unknown> {
-  const row = db.prepare("SELECT settings FROM users WHERE id = ?").get(userId) as
-    | { settings: string }
-    | undefined;
+type SettingsRow = {
+  theme: string;
+  reading_size: number;
+  presets_linked: number;
+  selection_presets: string | null;
+  followup_presets: string | null;
+};
+
+const parsePresets = (raw: string | null | undefined): Preset[] | undefined => {
+  if (!raw) return undefined;
   try {
-    return JSON.parse(row?.settings ?? "{}") as Record<string, unknown>;
+    const value = JSON.parse(raw) as unknown;
+    return Array.isArray(value) ? (value as Preset[]) : undefined;
   } catch {
-    return {};
+    return undefined;
   }
+};
+
+export function readSettings(userId: string): UserSettings {
+  const row = db
+    .prepare(
+      "SELECT theme, reading_size, presets_linked, selection_presets, followup_presets FROM users WHERE id = ?",
+    )
+    .get(userId) as SettingsRow | undefined;
+  const selection = parsePresets(row?.selection_presets);
+  const followUp = parsePresets(row?.followup_presets);
+  return {
+    theme: row?.theme === "dark" ? "dark" : "light",
+    readingSize: row?.reading_size ?? 1,
+    presets: {
+      ...(selection ? { selection } : {}),
+      ...(followUp ? { followUp } : {}),
+      link: Boolean(row?.presets_linked),
+    },
+  };
 }
 
-export function writeSettings(
-  userId: string,
-  patch: Record<string, unknown>,
-): Record<string, unknown> {
-  const next = { ...readSettings(userId), ...patch };
-  db.prepare("UPDATE users SET settings = ? WHERE id = ?").run(JSON.stringify(next), userId);
-  return next;
+export function writeSettings(userId: string, patch: Partial<UserSettings>): UserSettings {
+  const presets = patch.presets;
+  db.prepare(
+    `UPDATE users SET
+       theme = COALESCE(?, theme),
+       reading_size = COALESCE(?, reading_size),
+       presets_linked = COALESCE(?, presets_linked),
+       selection_presets = COALESCE(?, selection_presets),
+       followup_presets = COALESCE(?, followup_presets)
+     WHERE id = ?`,
+  ).run(
+    patch.theme === "dark" || patch.theme === "light" ? patch.theme : null,
+    typeof patch.readingSize === "number" && Number.isFinite(patch.readingSize)
+      ? patch.readingSize
+      : null,
+    presets?.link === undefined ? null : presets.link ? 1 : 0,
+    presets?.selection ? JSON.stringify(presets.selection) : null,
+    presets?.followUp ? JSON.stringify(presets.followUp) : null,
+    userId,
+  );
+  return readSettings(userId);
 }
 
-const providerRow = db.prepare("SELECT base_url, model, api_key_enc FROM users WHERE id = ?");
-const searchRow = db.prepare("SELECT search FROM users WHERE id = ?");
+const providerRow = db.prepare(
+  "SELECT model_base_url, model_name, model_api_key_enc, search_base_url, search_model, search_api_key_enc FROM users WHERE id = ?",
+);
 
 // Keys rest encrypted; a key that will not unseal counts as unconfigured.
 const configFrom = (
@@ -303,46 +339,38 @@ const configFrom = (
 export function readModelConfig(userId: string): ProviderConfig | null {
   const row = providerRow.get(userId) as ProviderRow | undefined;
   return configFrom(
-    row?.base_url,
-    row?.model,
-    row?.api_key_enc ? Buffer.from(row.api_key_enc).toString() : undefined,
+    row?.model_base_url,
+    row?.model_name,
+    row?.model_api_key_enc ? Buffer.from(row.model_api_key_enc).toString() : undefined,
   );
 }
 
 export function writeModelConfig(userId: string, config: ProviderConfig) {
-  db.prepare(
-    "UPDATE users SET base_url = ?, model = ?, api_key_enc = ?, verified_at = ? WHERE id = ?",
-  ).run(config.baseUrl, config.model, Buffer.from(seal(config.apiKey)), Date.now(), userId);
+  db.prepare("UPDATE users SET model_base_url = ?, model_name = ?, model_api_key_enc = ? WHERE id = ?").run(
+    config.baseUrl,
+    config.model,
+    Buffer.from(seal(config.apiKey)),
+    userId,
+  );
 }
 
 export function readSearchConfig(userId: string): ProviderConfig | null {
-  const row = searchRow.get(userId) as { search: string } | undefined;
-  try {
-    const stored = JSON.parse(row?.search ?? "{}") as {
-      baseUrl?: string;
-      model?: string;
-      key?: string;
-    };
-    return configFrom(stored.baseUrl, stored.model, stored.key);
-  } catch {
-    return null;
-  }
+  const row = providerRow.get(userId) as ProviderRow | undefined;
+  return configFrom(
+    row?.search_base_url,
+    row?.search_model,
+    row?.search_api_key_enc ? Buffer.from(row.search_api_key_enc).toString() : undefined,
+  );
 }
 
 export function writeSearchConfig(userId: string, config: ProviderConfig) {
-  const search = JSON.stringify({
-    baseUrl: config.baseUrl,
-    model: config.model,
-    key: seal(config.apiKey),
-  });
-  db.prepare("UPDATE users SET search = ? WHERE id = ?").run(search, userId);
+  db.prepare("UPDATE users SET search_base_url = ?, search_model = ?, search_api_key_enc = ? WHERE id = ?").run(
+    config.baseUrl,
+    config.model,
+    Buffer.from(seal(config.apiKey)),
+    userId,
+  );
 }
-
-// Login only checks presence; configured endpoints are never health-checked.
-export const configuredEndpoints = (userId: string) => ({
-  model: readModelConfig(userId) !== null,
-  search: readSearchConfig(userId) !== null,
-});
 
 export function patchNode(
   userId: string,

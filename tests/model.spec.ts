@@ -98,8 +98,8 @@ test("model setup verifies before save and never returns the key", async ({ page
 
   // A failed verification never overwrites the stored provider.
   const unchanged = readProviderRow();
-  expect(unchanged?.base_url).toBe(seeded?.base_url);
-  expect(unchanged?.model).toBe(seeded?.model);
+  expect(unchanged?.model_base_url).toBe(seeded?.model_base_url);
+  expect(unchanged?.model_name).toBe(seeded?.model_name);
 
   useReply(defaultReply());
   await connect(page, "model");
@@ -112,8 +112,8 @@ test("model setup verifies before save and never returns the key", async ({ page
   expect(settings.model).toMatchObject({ configured: true, model: CHAT_MODEL, baseUrl });
 
   const row = readProviderRow();
-  expect(row?.base_url).toBe(baseUrl);
-  expect(Buffer.from(row!.api_key_enc!).toString()).not.toContain(KEY);
+  expect(row?.model_base_url).toBe(baseUrl);
+  expect(Buffer.from(row!.model_api_key_enc!).toString()).not.toContain(KEY);
 });
 
 test("a configured model is not health-checked at login", async ({ page }) => {
@@ -121,10 +121,7 @@ test("a configured model is not health-checked at login", async ({ page }) => {
   await connect(page, "model");
   useReply(() => ({ status: 500, raw: "down" }));
 
-  const me = await page.request.get("/api/auth/me");
-  expect(me.ok()).toBe(true);
-  const session = (await me.json()) as { configured: { model: boolean; search: boolean } };
-  expect(session.configured).toEqual({ model: true, search: false });
+  expect((await page.request.get("/api/auth/me")).ok()).toBe(true);
   expect(provider.calls).toHaveLength(0);
 });
 
@@ -359,6 +356,7 @@ test("the settings sheet verifies a model before saving", async ({ page }) => {
   const uiModel = "mock/ui";
   await open(page);
   await page.getByTestId("open-settings").click();
+  await page.getByTestId("settings-section-providers").click();
   await page.getByTestId("model-base-url").fill(baseUrl);
   await page.getByTestId("model-model").fill(uiModel);
   await page.getByTestId("model-api-key").fill(KEY);

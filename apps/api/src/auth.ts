@@ -3,7 +3,6 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context, MiddlewareHandler } from "hono";
 import {
   appendRefreshToken,
-  configuredEndpoints,
   createSession,
   getUser,
   primaryBurrow,
@@ -27,8 +26,8 @@ const REFRESH_COOKIE = "db_refresh";
 const REFRESH_PATH = "/api/auth/refresh";
 const PUBLIC = new Set([
   "/health",
-  "/auth/sign-up",
-  "/auth/sign-in",
+  "/auth/email",
+  "/auth/verify",
   "/auth/refresh",
   "/auth/logout",
 ]);
@@ -65,7 +64,6 @@ export const sessionPayload = (userId: string) => {
     ? {
         user: { id: user.id, email: user.email },
         burrowId: burrow.id,
-        configured: configuredEndpoints(userId),
       }
     : null;
 };

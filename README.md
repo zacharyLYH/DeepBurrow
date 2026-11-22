@@ -16,8 +16,8 @@ Reference UX: `~/Desktop/rabbithole` (vanilla JS + esbuild). We keep its feel an
 
 ## Flow
 
-1. Sign in with email and password; change the password in Settings. Sessions use short-lived access cookies and rotating refresh credentials.
-2. Connect an OpenAI-compatible provider (base URL, model, key). The backend verifies it.
+1. Sign in with your email and a six-digit code. No password is used.
+2. Add an OpenAI-compatible model provider in Settings. If it is missing, a dismissible setup prompt appears; you can continue, but asks fail until a model key is configured. Search is optional and configured separately.
 3. Ask a question.
 4. The backend agent researches; tool calls never reach the browser.
 5. The answer streams into a card with title, sources and follow-ups.
@@ -79,14 +79,14 @@ generate ⇄ search → validate ⇄ repair → stream
 SQLite via `node:sqlite`, raw SQL, no ORM. Lineage is the node parent chain.
 
 ```
-users(id, email, password_hash, base_url, model, api_key_enc, search)
+users(id, email, model_base_url, model_name, model_api_key_enc, search_base_url, search_model, search_api_key_enc, theme, reading_size, presets_linked, selection_presets, followup_presets)
 auth_sessions(id, user_id, created_at, expires_at, revoked_at)
 refresh_tokens(id, session_id, token_hash, created_at, expires_at, used_at)
 burrows(id, user_id, title)
 nodes(id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, canvas, deleted_at)
 ```
 
-Every private query is scoped to the authenticated user's ID. Burrows are owned by one user, and node access is authorized through that ownership chain. Passwords use a one-way password hash; encryption keys are not password hashes.
+Every private query is scoped to the authenticated user's ID. Burrows are owned by one user, and node access is authorized through that ownership chain. Login uses one-time email codes; provider keys are encrypted at rest.
 
 `origin` is UI provenance only; prompts come from `markdown` + lineage. Canvas state and soft-delete live on the node.
 
@@ -99,6 +99,8 @@ Every private query is scoped to the authenticated user's ID. Burrows are owned 
 ## Auth configuration
 
 - `AUTH_SECRET` — 32+ characters. Required when `NODE_ENV=production`.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` — required by `make start` for six-digit email login codes.
+- `make start` generates and preserves `AUTH_SECRET` when missing, then checks SMTP configuration before starting.
 - `APP_ORIGIN` — comma-separated browser origins allowed to send state-changing requests.
 - Access lasts 15 minutes, refresh 30 days, and 10 failed attempts per IP/scope are allowed per 15 minutes. Production cookies are Secure.
 - Tests seed the demo account and fixture burrow themselves; the API never creates a demo account.

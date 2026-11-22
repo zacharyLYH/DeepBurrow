@@ -1,14 +1,18 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
-  base_url TEXT,
-  model TEXT,
-  api_key_enc BLOB,
-  verified_at INTEGER,
-  search TEXT NOT NULL DEFAULT '{}',
-  settings TEXT NOT NULL DEFAULT '{}'
+  model_base_url TEXT,
+  model_name TEXT,
+  model_api_key_enc BLOB,
+  search_base_url TEXT,
+  search_model TEXT,
+  search_api_key_enc BLOB,
+  theme TEXT NOT NULL DEFAULT 'light',
+  reading_size REAL NOT NULL DEFAULT 1,
+  presets_linked INTEGER NOT NULL DEFAULT 0,
+  selection_presets TEXT,
+  followup_presets TEXT
 );
 
 CREATE TABLE IF NOT EXISTS burrows (

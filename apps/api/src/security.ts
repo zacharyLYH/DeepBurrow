@@ -1,14 +1,7 @@
-import {
-  createHash,
-  createHmac,
-  randomBytes,
-  scryptSync,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const ISSUER = "deepburrow";
 const AUDIENCE = { access: "deepburrow-access", refresh: "deepburrow-refresh" } as const;
-const SCRYPT = { N: 16_384, r: 8, p: 1, size: 64 };
 
 export const secret = process.env.AUTH_SECRET ?? "dev-only-auth-secret-change-me-32-chars";
 if (secret.length < 32) throw new Error("AUTH_SECRET must be at least 32 characters");
@@ -123,27 +116,4 @@ export const verifyRefresh = (token: string, ignoreExpiry = false) =>
 
 export function digest(value: string) {
   return createHash("sha256").update(value).digest("base64url");
-}
-
-export function hashPassword(password: string) {
-  const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, SCRYPT.size, SCRYPT);
-  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64url")}$${hash.toString("base64url")}`;
-}
-
-const dummyHash = hashPassword("deepburrow-dummy-password");
-
-export function verifyPassword(password: string, stored: string | undefined) {
-  const [scheme, n, r, p, salt, hash] = (stored ?? dummyHash).split("$");
-  if (scheme !== "scrypt" || !n || !r || !p || !salt || !hash) {
-    scryptSync(password, "invalid-salt", SCRYPT.size, SCRYPT);
-    return false;
-  }
-  const expected = Buffer.from(hash, "base64url");
-  const actual = scryptSync(password, Buffer.from(salt, "base64url"), expected.length, {
-    N: Number(n),
-    r: Number(r),
-    p: Number(p),
-  });
-  return timingSafeEqual(actual, expected);
 }

@@ -3,6 +3,7 @@ import { fixtureBurrow, fixtureBurrows } from "../packages/types/src/fixtures.ts
 import type { Burrow } from "../packages/types/src/types.ts";
 import { resetDemoBurrow } from "./db.ts";
 import { cards, open } from "./helpers.ts";
+import { latestCode } from "./mock-smtp.ts";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -99,10 +100,9 @@ test("renames a burrow and rejects a case-only duplicate", async ({ page }) => {
 
 test("another user's burrows never appear in the list", async ({ page }) => {
   const email = `other-${Date.now()}@example.test`;
-  const signUp = await page.request.post("/api/auth/sign-up", {
-    data: { email, password: "deepburrow-other-password" },
-  });
-  expect(signUp.status()).toBe(201);
+  expect((await page.request.post("/api/auth/email", { data: { email } })).status()).toBe(202);
+  const code = await latestCode(email);
+  expect((await page.request.post("/api/auth/verify", { data: { email, code } })).status()).toBe(200);
   // Another user may reuse a title that the demo account already owns.
   const shared = await page.request.post("/api/burrows", { data: { title: fixtureBurrow.title } });
   expect(shared.status()).toBe(201);

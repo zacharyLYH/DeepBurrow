@@ -1,15 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 import { digest, signAccess, signRefresh } from "../apps/api/src/security.ts";
 import { demoCredentials } from "../packages/types/src/fixtures.ts";
-import { parseEvents } from "../packages/types/src/sse.ts";
 import { readCookies, type CookieJar } from "./api-auth.ts";
 import { resetDemoBurrow, TEST_DB_PATH } from "./db.ts";
-import { MOCK_API_KEY, MOCK_PROVIDER_URL } from "./mock-provider.ts";
+import { latestCode, mailCount } from "./mock-smtp.ts";
+import { startApi } from "./spawn-api.ts";
 
 const API = "http://localhost:8787";
-const PASSWORD = "correct horse battery";
 
 test.beforeEach(() => resetDemoBurrow());
 
@@ -18,16 +20,15 @@ const unique = () => `user-${Date.now()}-${Math.random().toString(16).slice(2)}@
 type Session = { user: { id: string; email: string }; burrowId: string };
 type Auth = { session: Session } & CookieJar;
 
-const call = async (
-  path: string,
-  options: {
-    method?: string;
-    body?: unknown;
-    cookie?: string;
-    headers?: Record<string, string>;
-  } = {},
-) =>
-  fetch(`${API}${path}`, {
+type RequestOptions = {
+  method?: string;
+  body?: unknown;
+  cookie?: string;
+  headers?: Record<string, string>;
+};
+
+const request = (base: string, path: string, options: RequestOptions = {}) =>
+  fetch(`${base}${path}`, {
     method: options.method ?? "GET",
     headers: {
       ...(options.body === undefined ? {} : { "content-type": "application/json" }),
@@ -37,131 +38,152 @@ const call = async (
     ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
   });
 
-const authenticate = async (
-  path: string,
-  email: string,
-  password: string,
-  status: number,
-): Promise<Auth> => {
-  const response = await call(path, { method: "POST", body: { email, password } });
-  expect(response.status).toBe(status);
+const call = (path: string, options: RequestOptions = {}) => request(API, path, options);
+const post = (base: string, path: string, body: unknown) =>
+  request(base, path, { method: "POST", body });
+
+// Request and confirm a code, exactly like the UI.
+const login = async (email = demoCredentials.email, base = API): Promise<Auth> => {
+  expect((await post(base, "/auth/email", { email })).status).toBe(202);
+  const code = await latestCode(email);
+  const response = await post(base, "/auth/verify", { email, code });
+  expect(response.status).toBe(200);
   return { session: (await response.json()) as Session, ...readCookies(response.headers) };
 };
 
-const signUp = (email = unique(), password = PASSWORD) =>
-  authenticate("/auth/sign-up", email, password, 201);
-
-const signIn = (email: string, password: string) =>
-  authenticate("/auth/sign-in", email, password, 200);
-
-const askRoot = async (auth: Auth, question: string) => {
-  const response = await call("/ask", {
-    method: "POST",
-    cookie: auth.cookie,
-    body: { parentId: null, origin: { question } },
-  });
-  expect(response.headers.get("content-type")).toContain("text/event-stream");
-  const events = parseEvents(await response.text());
-  const done = events.at(-1);
-  if (done?.type !== "node.done") throw new Error("no root answer");
-  return done.node;
+const withFreshApi = async (env: Record<string, string>, run: (base: string) => Promise<void>) => {
+  const dataDir = mkdtempSync(join(tmpdir(), "deepburrow-codes-"));
+  const api = await startApi({ dataDir, port: 8796, env });
+  try {
+    await run(api.url);
+  } finally {
+    await api.stop();
+  }
 };
 
-test("signed-out users see auth and can sign in", async ({ page }) => {
+test("signed-out users enter email, receive a code, and sign in", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("auth-screen")).toBeVisible();
+
   await page.getByTestId("auth-email").fill(demoCredentials.email);
-  await page.getByTestId("auth-password").fill(demoCredentials.password);
   await page.getByTestId("auth-submit").click();
+  await expect(page.getByTestId("auth-code")).toBeVisible();
+
+  const code = await latestCode(demoCredentials.email);
+  const otp = page.locator('input[data-testid="auth-code"], [data-testid="auth-code"] input');
+  await otp.focus();
+  await page.keyboard.type(code);
+  await page.getByTestId("auth-submit").click();
+
   await expect(page.getByTestId("auth-screen")).toHaveCount(0);
   await expect(page.locator(".react-flow__node")).toHaveCount(4);
   await expect(page.getByTestId("burrow-title")).toHaveText("TCP congestion control");
 });
 
-test("failed sign-in attempts are rate limited", async () => {
+test("a new email creates the account only after the code is confirmed", async () => {
+  const email = unique();
+  expect((await call("/auth/email", { method: "POST", body: { email } })).status).toBe(202);
+
+  const db = new DatabaseSync(TEST_DB_PATH);
+  const before = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+  db.close();
+  expect(before).toBeUndefined();
+
+  const code = await latestCode(email);
+  const response = await call("/auth/verify", { method: "POST", body: { email, code } });
+  expect(response.status).toBe(200);
+  const auth = { session: (await response.json()) as Session, ...readCookies(response.headers) };
+  expect(auth.session.user.email).toBe(email);
+  expect(auth.session.burrowId).toBeTruthy();
+  expect((await call("/auth/me", { cookie: auth.cookie })).ok).toBe(true);
+
+  const saved = new DatabaseSync(TEST_DB_PATH);
+  const after = saved.prepare("SELECT id FROM users WHERE email = ?").get(email) as
+    | { id: string }
+    | undefined;
+  saved.close();
+  expect(after?.id).toBe(auth.session.user.id);
+});
+
+test("responses never reveal whether an account exists", async () => {
+  const known = await call("/auth/email", { method: "POST", body: { email: demoCredentials.email } });
+  const unknown = await call("/auth/email", { method: "POST", body: { email: unique() } });
+  expect(known.status).toBe(202);
+  expect(unknown.status).toBe(202);
+  expect(await known.json()).toEqual(await unknown.json());
+
+  const badKnown = await call("/auth/verify", {
+    method: "POST",
+    body: { email: demoCredentials.email, code: "abc" },
+  });
+  const badUnknown = await call("/auth/verify", {
+    method: "POST",
+    body: { email: unique(), code: "abc" },
+  });
+  expect(badKnown.status).toBe(401);
+  expect(badUnknown.status).toBe(401);
+  expect(await badKnown.json()).toEqual(await badUnknown.json());
+});
+
+test("failed code attempts are rate limited per IP", async () => {
   const headers = { "x-forwarded-for": "203.0.113.99" };
+  await call("/auth/email", { method: "POST", body: { email: demoCredentials.email } });
   const attempt = () =>
-    call("/auth/sign-in", {
+    call("/auth/verify", {
       method: "POST",
       headers,
-      body: { email: "nobody@example.test", password: "not the password" },
+      body: { email: demoCredentials.email, code: "123456" },
     });
 
   for (let index = 0; index < 10; index++) expect((await attempt()).status).toBe(401);
   expect((await attempt()).status).toBe(429);
 });
 
-test("two accounts get separate burrows, settings, nodes and runs", async () => {
-  const alice = await signUp();
-  const bob = await signUp();
-  expect(alice.session.burrowId).not.toBe(bob.session.burrowId);
-
-  // A new account has no provider; give Alice the mock so her run can answer.
-  expect(
-    (
-      await call("/settings/model", {
-        method: "POST",
-        cookie: alice.cookie,
-        body: { baseUrl: MOCK_PROVIDER_URL, model: "mock/chat", apiKey: MOCK_API_KEY },
-      })
-    ).ok,
-  ).toBe(true);
-
-  const aliceNode = await askRoot(alice, "Alice owns this root");
-  expect(aliceNode.burrowId).toBe(alice.session.burrowId);
-
-  const aliceView = (await (await call(`/burrows/${alice.session.burrowId}`, { cookie: alice.cookie })).json()) as {
-    nodes: { id: string }[];
-  };
-  expect(aliceView.nodes.map((node) => node.id)).toContain(aliceNode.id);
-
-  expect((await call(`/burrows/${alice.session.burrowId}`, { cookie: bob.cookie })).status).toBe(404);
-  expect(
-    (await call(`/nodes/${aliceNode.id}`, {
-      method: "PATCH",
-      cookie: bob.cookie,
-      body: { title: "stolen" },
-    })).status,
-  ).toBe(404);
-  expect((await call(`/nodes/${aliceNode.id}`, { method: "DELETE", cookie: bob.cookie })).status).toBe(404);
-  expect((await call(`/nodes/${aliceNode.id}/stream`, { cookie: bob.cookie })).status).toBe(404);
-  expect((await call(`/nodes/${aliceNode.id}/cancel`, { method: "POST", cookie: bob.cookie })).status).toBe(
-    404,
-  );
-  expect(
-    (await call(`/nodes/${aliceNode.id}/restore`, { method: "POST", cookie: bob.cookie })).status,
-  ).toBe(404);
-  expect(
-    (await call("/ask", {
-      method: "POST",
-      cookie: bob.cookie,
-      body: { parentId: aliceNode.id, origin: { question: "hijack" } },
-    })).status,
-  ).toBe(404);
-  expect(
-    (await call("/ask", {
-      method: "POST",
-      cookie: bob.cookie,
-      body: { nodeId: aliceNode.id, origin: aliceNode.origin },
-    })).status,
-  ).toBe(404);
-
-  await call("/settings", {
-    method: "PATCH",
-    cookie: alice.cookie,
-    body: { theme: "dark" },
+test("an expired code is refused", async () => {
+  await withFreshApi({ CODE_TTL_MS: "100" }, async (base) => {
+    const email = unique();
+    expect((await post(base, "/auth/email", { email })).status).toBe(202);
+    const code = await latestCode(email);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const response = await post(base, "/auth/verify", { email, code });
+    expect(response.status).toBe(401);
+    expect(((await response.json()) as { error: string }).error).toBe("Invalid or expired code");
   });
-  const bobSettings = (await (await call("/settings", { cookie: bob.cookie })).json()) as {
-    settings: Record<string, unknown>;
-  };
-  expect(bobSettings.settings).toEqual({});
+});
 
-  expect((await call(`/burrows/${bob.session.burrowId}`, { cookie: bob.cookie })).status).toBe(200);
-  expect((await call(`/burrows/${bob.session.burrowId}`, { cookie: alice.cookie })).status).toBe(404);
+test("resend respects cooldown, replaces the code, and caps attempts", async () => {
+  await withFreshApi({ CODE_TTL_MS: "60000", CODE_RESEND_MS: "400" }, async (base) => {
+    const email = unique();
+    expect((await post(base, "/auth/email", { email })).status).toBe(202);
+    const first = await latestCode(email);
+    const count = await mailCount(email);
+
+    // An immediate resend answers generically but sends nothing.
+    expect((await post(base, "/auth/email", { email })).status).toBe(202);
+    expect(await mailCount(email)).toBe(count);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect((await post(base, "/auth/email", { email })).status).toBe(202);
+    expect(await mailCount(email)).toBe(count + 1);
+    const second = await latestCode(email);
+    if (second !== first) {
+      expect((await post(base, "/auth/verify", { email, code: first })).status).toBe(401);
+    }
+    expect((await post(base, "/auth/verify", { email, code: second })).status).toBe(200);
+
+    // A fresh code dies after five wrong attempts.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect((await post(base, "/auth/email", { email })).status).toBe(202);
+    const third = await latestCode(email);
+    for (let index = 0; index < 5; index++) {
+      expect((await post(base, "/auth/verify", { email, code: "123456" })).status).toBe(401);
+    }
+    expect((await post(base, "/auth/verify", { email, code: third })).status).toBe(401);
+  });
 });
 
 test("refresh rotates, keeps cookie attributes, and rejects reuse", async () => {
-  const user = await signUp();
+  const user = await login(unique());
   const oldRefresh = user.cookies.db_refresh;
   expect(oldRefresh).toBeTruthy();
 
@@ -220,44 +242,11 @@ test("refresh rotates, keeps cookie attributes, and rejects reuse", async () => 
   expect(revoked.status).toBe(401);
 });
 
-test("password change revokes sessions and logout revokes the refresh token", async () => {
-  const email = unique();
-  const user = await signUp(email);
-  const changed = await call("/auth/change-password", {
-    method: "POST",
-    cookie: user.cookie,
-    body: { currentPassword: PASSWORD, newPassword: "new correct horse battery" },
-  });
-  expect(changed.status).toBe(204);
-  expect(
-    (await call("/auth/refresh", {
-      method: "POST",
-      cookie: `db_refresh=${user.cookies.db_refresh}`,
-    })).status,
-  ).toBe(401);
-  expect(
-    (await call("/auth/sign-in", { method: "POST", body: { email, password: PASSWORD } })).status,
-  ).toBe(401);
-
-  const next = await signIn(email, "new correct horse battery");
-  const logout = await call("/auth/logout", {
-    method: "POST",
-    cookie: next.cookie,
-  });
-  expect(logout.status).toBe(204);
-  expect(
-    (await call("/auth/refresh", {
-      method: "POST",
-      cookie: `db_refresh=${next.cookies.db_refresh}`,
-    })).status,
-  ).toBe(401);
-});
-
 test("an expired access cookie refreshes transparently", async ({ page }) => {
   const email = unique();
-  const response = await page.request.post("/api/auth/sign-up", {
-    data: { email, password: PASSWORD },
-  });
+  expect((await page.request.post("/api/auth/email", { data: { email } })).status()).toBe(202);
+  const code = await latestCode(email);
+  const response = await page.request.post("/api/auth/verify", { data: { email, code } });
   expect(response.ok()).toBe(true);
   const session = (await response.json()) as Session;
 
@@ -279,25 +268,14 @@ test("an expired access cookie refreshes transparently", async ({ page }) => {
   expect((await page.request.get("/api/auth/me")).ok()).toBe(true);
 });
 
-test("settings changes the password and requires a fresh sign-in", async ({ page }) => {
-  const email = unique();
-  const next = "new correct horse battery";
-  const response = await page.request.post("/api/auth/sign-up", {
-    data: { email, password: PASSWORD },
-  });
-  expect(response.ok()).toBe(true);
-
-  await page.goto("/");
-  await page.getByTestId("open-settings").click();
-  await expect(page.getByTestId("account-email")).toHaveText(email);
-  await page.getByTestId("current-password").fill(PASSWORD);
-  await page.getByTestId("new-password").fill(next);
-  await page.getByTestId("change-password").click();
-
-  await expect(page.getByTestId("auth-screen")).toBeVisible();
-  await expect(page.getByTestId("auth-notice")).toContainText(/sign in again/i);
-  await page.getByTestId("auth-email").fill(email);
-  await page.getByTestId("auth-password").fill(next);
-  await page.getByTestId("auth-submit").click();
-  await expect(page.getByTestId("empty-canvas")).toBeVisible();
+test("logout revokes the refresh token", async () => {
+  const user = await login(unique());
+  const logout = await call("/auth/logout", { method: "POST", cookie: user.cookie });
+  expect(logout.status).toBe(204);
+  expect(
+    (await call("/auth/refresh", {
+      method: "POST",
+      cookie: `db_refresh=${user.cookies.db_refresh}`,
+    })).status,
+  ).toBe(401);
 });

@@ -15,6 +15,7 @@ import { SettingsSheet } from "@/components/settings-sheet";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toolbar } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Toaster, toast } from "@/components/ui/sonner";
 import { cardMarkdown } from "@/lib/copy";
 import { exportBurrowHtml } from "@/lib/export";
@@ -95,9 +96,12 @@ export function App({
   const { burrows, loading, loadError, reload, create, rename } = useBurrows();
   const [selectedId, setSelectedId] = useState(() => recallBurrow(session.user.id));
   const [newOpen, setNewOpen] = useState(false);
+  const [modelConfigured, setModelConfigured] = useState<boolean>();
+  const [promptDismissed, setPromptDismissed] = useState(false);
 
+  // One provider-status read per app load, shared with the settings prompt.
   useEffect(() => {
-    void loadSettings();
+    void loadSettings().then((providers) => setModelConfigured(providers?.model));
   }, []);
 
   // The stored id wins when it still exists; otherwise the account's first
@@ -175,6 +179,9 @@ export function App({
             title={selected.title}
             onNew={() => setNewOpen(true)}
             onSignOut={onSignOut}
+            showModelPrompt={modelConfigured === false && !promptDismissed}
+            onDismissPrompt={() => setPromptDismissed(true)}
+            onModelSaved={() => setModelConfigured(true)}
           />
         </SidebarInset>
         <NewBurrowDialog open={newOpen} onOpenChange={setNewOpen} onCreate={startBurrow} />
@@ -190,12 +197,18 @@ function Workspace({
   title,
   onNew,
   onSignOut,
+  showModelPrompt,
+  onDismissPrompt,
+  onModelSaved,
 }: {
   session: Session;
   burrowId: string;
   title: string;
   onNew: () => void;
   onSignOut: (notice?: string) => void;
+  showModelPrompt: boolean;
+  onDismissPrompt: () => void;
+  onModelSaved: () => void;
 }) {
   const burrow = useBurrow(burrowId);
   const settings = useSettings();
@@ -255,6 +268,7 @@ function Workspace({
       const node = byId.get(id);
       if (node) void navigator.clipboard.writeText(cardMarkdown(node)).then(() => toast("Card copied", { duration: 2000 }));
     },
+    onSettings: () => setOverlay("settings"),
   };
 
   const download = () => exportBurrowHtml(title);
@@ -307,6 +321,34 @@ function Workspace({
         canExport={burrow.nodes.length > 0}
       />
 
+      <Dialog open={showModelPrompt} onOpenChange={(next) => !next && onDismissPrompt()}>
+        <DialogContent
+          data-testid="model-prompt"
+          aria-describedby={undefined}
+          className="top-1/2 w-[420px] -translate-y-1/2 p-4"
+        >
+          <DialogTitle className="text-sm font-semibold">Add a model to start asking</DialogTitle>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Model is required to ask; Search is optional. You can keep browsing without one.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button data-testid="model-prompt-dismiss" size="sm" variant="ghost" onClick={onDismissPrompt}>
+              Not now
+            </Button>
+            <Button
+              data-testid="model-prompt-open"
+              size="sm"
+              onClick={() => {
+                onDismissPrompt();
+                setOverlay("settings");
+              }}
+            >
+              Open settings
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {passage && (
         <AskPopover
           text={passage.text}
@@ -338,6 +380,7 @@ function Workspace({
         onClose={() => setOverlay(null)}
         user={session.user}
         onSignOut={onSignOut}
+        onModelSaved={onModelSaved}
       />
       <Shortcuts open={overlay === "shortcuts"} onClose={() => setOverlay(null)} />
       <Lightbox />

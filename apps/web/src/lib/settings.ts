@@ -1,16 +1,12 @@
-import type { Preset } from "@deepburrow/types";
+import type { Preset, UserSettings } from "@deepburrow/types";
 import { apiFetch } from "./api";
 import { createStore, useStore } from "./store";
 
-export type Theme = "light" | "dark";
+export type Theme = UserSettings["theme"];
 export type Surface = "selection" | "followUp";
 export type PresetSets = { selection: Preset[]; followUp: Preset[]; link: boolean };
 
-export type Settings = {
-  theme: Theme;
-  readingSize: number;
-  presets: PresetSets;
-};
+export type Settings = Omit<UserSettings, "presets"> & { presets: PresetSets };
 
 export const DEFAULT_PRESETS: PresetSets = {
   selection: [
@@ -75,14 +71,22 @@ const persist = () => {
   }, 250);
 };
 
-export async function loadSettings() {
+type ProviderAvailability = { model: boolean; search: boolean };
+
+export async function loadSettings(): Promise<ProviderAvailability | null> {
   try {
     const response = await apiFetch("/api/settings");
-    if (!response.ok) return;
-    const data = (await response.json()) as { settings: Partial<Settings> };
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      settings: Partial<Settings>;
+      model?: { configured: boolean };
+      search?: { configured: boolean };
+    };
     settingsStore.set(merge(data.settings));
+    return { model: Boolean(data.model?.configured), search: Boolean(data.search?.configured) };
   } catch {
     // Offline: defaults are still usable, edits retry on the next write.
+    return null;
   }
 }
 

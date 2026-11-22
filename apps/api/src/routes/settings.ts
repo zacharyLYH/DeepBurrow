@@ -8,12 +8,13 @@ import {
   writeSearchConfig,
   writeSettings,
 } from "../db.ts";
+import type { ProviderSummary, UserSettings } from "../../../../packages/types/src/types.ts";
 import { chatCompletion, type ProviderConfig } from "../llm.ts";
 import { searchWeb } from "../search.ts";
 
 export const settingsRoutes = new Hono<AuthEnv>();
 
-const providerSummary = (config: ProviderConfig | null) => ({
+const providerSummary = (config: ProviderConfig | null): ProviderSummary => ({
   configured: Boolean(config),
   baseUrl: config?.baseUrl ?? "",
   model: config?.model ?? "",
@@ -78,7 +79,7 @@ settingsRoutes.post("/model", saveProvider("model"));
 settingsRoutes.post("/search", saveProvider("search"));
 
 settingsRoutes.patch("/", async (c) => {
-  const patch = await c.req.json<Record<string, unknown>>().catch(() => null);
+  const patch = await c.req.json<Partial<UserSettings>>().catch(() => null);
   if (!patch) return c.json({ error: "settings required" }, 400);
   return c.json({ settings: writeSettings(c.get("userId"), patch) });
 });

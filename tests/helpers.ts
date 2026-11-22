@@ -1,6 +1,13 @@
-import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { demoCredentials, fixtureBurrow, fixtureNodes } from "../packages/types/src/fixtures.ts";
 import type { Node as BurrowNode } from "../packages/types/src/types.ts";
+import { latestCode } from "./mock-smtp.ts";
 
 export const baseCount = fixtureNodes.length;
 export const rootId = fixtureNodes[0].id;
@@ -13,14 +20,20 @@ export async function burrowNodes(page: Page): Promise<BurrowNode[]> {
   return ((await response.json()) as { nodes: BurrowNode[] }).nodes;
 }
 
-export async function signIn(page: Page) {
-  const response = await page.request.post("/api/auth/sign-in", { data: demoCredentials });
+const login = async (request: APIRequestContext) => {
+  const email = demoCredentials.email;
+  expect((await request.post("/api/auth/email", { data: { email } })).status()).toBe(202);
+  const code = await latestCode(email);
+  const response = await request.post("/api/auth/verify", { data: { email, code } });
   expect(response.ok()).toBe(true);
+};
+
+export async function signIn(page: Page) {
+  await login(page.request);
 }
 
 export async function signInContext(context: BrowserContext) {
-  const response = await context.request.post("/api/auth/sign-in", { data: demoCredentials });
-  expect(response.ok()).toBe(true);
+  await login(context.request);
 }
 
 export async function open(page: Page, count = baseCount) {

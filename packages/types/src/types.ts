@@ -4,6 +4,14 @@ export type Source = { title: string; url: string };
 
 export type Preset = { label: string; instruction: string };
 
+export type UserSettings = {
+  theme: "light" | "dark";
+  readingSize: number;
+  presets: { selection?: Preset[]; followUp?: Preset[]; link: boolean };
+};
+
+export type ProviderSummary = { configured: boolean; baseUrl: string; model: string };
+
 export type Origin = {
   question: string;
   selectedText?: string;

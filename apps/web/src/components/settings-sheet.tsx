@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import type { Preset } from "@deepburrow/types";
+import type { Preset, ProviderSummary } from "@deepburrow/types";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -120,7 +127,6 @@ function PresetEditor() {
   );
 }
 
-type ProviderStatus = { configured: boolean; baseUrl: string; model: string };
 type ProviderKind = "model" | "search";
 type ProviderField = "baseUrl" | "model" | "apiKey";
 
@@ -144,8 +150,8 @@ function ProviderForm({
   onSaved,
 }: {
   kind: ProviderKind;
-  status?: ProviderStatus;
-  onSaved: (status: ProviderStatus) => void;
+  status?: ProviderSummary;
+  onSaved: (status: ProviderSummary) => void;
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState("");
@@ -162,7 +168,7 @@ function ProviderForm({
         body: JSON.stringify(form),
       });
       const data = (await response.json().catch(() => ({}))) as {
-        provider?: ProviderStatus;
+        provider?: ProviderSummary;
         error?: string;
       };
       if (!response.ok || !data.provider) {
@@ -211,112 +217,37 @@ function ProviderForm({
   );
 }
 
-function Account({
-  email,
-  onSignOut,
-}: {
-  email: string;
-  onSignOut: (notice?: string) => void;
-}) {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const change = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      const response = await apiFetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ currentPassword: current, newPassword: next }),
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? "Could not change password");
-        return;
-      }
-      onSignOut("Password changed. Sign in again.");
-    } catch {
-      setError("Could not reach the server");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <Row label="Email">
-        <span data-testid="account-email" className="text-xs text-muted-foreground">
-          {email}
-        </span>
-      </Row>
-      <Row label="Session">
-        <Button data-testid="sign-out" size="xs" variant="outline" onClick={() => onSignOut()}>
-          Sign out
-        </Button>
-      </Row>
-      <form onSubmit={change} className="space-y-2 pt-2">
-        <Input
-          aria-label="Current password"
-          data-testid="current-password"
-          type="password"
-          autoComplete="current-password"
-          placeholder="Current password"
-          required
-          value={current}
-          onChange={(event) => setCurrent(event.target.value)}
-          className="h-8 text-xs"
-        />
-        <Input
-          aria-label="New password"
-          data-testid="new-password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="New password (10+ characters)"
-          minLength={10}
-          required
-          value={next}
-          onChange={(event) => setNext(event.target.value)}
-          className="h-8 text-xs"
-        />
-        {error && (
-          <p data-testid="password-error" role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        )}
-        <Button data-testid="change-password" size="xs" variant="outline" disabled={busy}>
-          {busy ? "Changing…" : "Change password"}
-        </Button>
-      </form>
-    </>
-  );
-}
-
 export function SettingsSheet({
   open,
   onClose,
   user,
   onSignOut,
+  onModelSaved,
 }: {
   open: boolean;
   onClose: () => void;
   user: { id: string; email: string };
   onSignOut: (notice?: string) => void;
+  onModelSaved?: () => void;
 }) {
   const settings = useSettings();
-  const [providers, setProviders] = useState<Partial<Record<ProviderKind, ProviderStatus>>>({});
+  const [providers, setProviders] = useState<Partial<Record<ProviderKind, ProviderSummary>>>({});
+  const [openSections, setOpenSections] = useState<string[]>(["appearance"]);
 
-  // One read per open, not one per form.
+  // One read per open. A missing model opens Providers so the fix is visible.
   useEffect(() => {
     if (!open) return;
+    setOpenSections(["appearance"]);
     void apiFetch("/api/settings")
       .then((response) => response.json())
-      .then((data: Record<ProviderKind, ProviderStatus>) =>
-        setProviders({ model: data.model, search: data.search }),
-      )
+      .then((data: Record<ProviderKind, ProviderSummary>) => {
+        setProviders({ model: data.model, search: data.search });
+        if (!data.model?.configured) {
+          setOpenSections((current) =>
+            current.includes("providers") ? current : [...current, "providers"],
+          );
+        }
+      })
       .catch(() => undefined);
   }, [open]);
 
@@ -333,84 +264,120 @@ export function SettingsSheet({
         </header>
 
         <div className="db-sheet-body">
-          <section>
-            <h3>Appearance</h3>
-            <Row label="Theme">
-              {(["light", "dark"] as const).map((theme) => (
-                <Button
-                  key={theme}
-                  data-testid={`theme-${theme}`}
-                  size="xs"
-                  variant={settings.theme === theme ? "default" : "outline"}
-                  className="capitalize"
-                  onClick={() => setSettings({ theme })}
-                >
-                  {theme}
-                </Button>
-              ))}
-            </Row>
-            <Row label={`Reading size · ${settings.readingSize.toFixed(1)}×`}>
-              <Button
-                aria-label="Decrease reading size"
-                data-testid="reading-down"
-                size="xs"
-                variant="outline"
-                onClick={() => setSettings({ readingSize: clampReading(settings.readingSize - 0.1) })}
-              >
-                −
-              </Button>
-              <Button
-                aria-label="Reset reading size"
-                data-testid="reading-reset"
-                size="xs"
-                variant="ghost"
-                onClick={() => setSettings({ readingSize: 1 })}
-              >
-                1.0×
-              </Button>
-              <Button
-                aria-label="Increase reading size"
-                data-testid="reading-up"
-                size="xs"
-                variant="outline"
-                disabled={settings.readingSize >= MAX_READING}
-                onClick={() => setSettings({ readingSize: clampReading(settings.readingSize + 0.1) })}
-              >
-                +
-              </Button>
-              <span className="db-hint">
-                {MIN_READING}–{MAX_READING}
-              </span>
-            </Row>
-          </section>
+          <Accordion
+            type="multiple"
+            value={openSections}
+            onValueChange={setOpenSections}
+            className="space-y-1"
+          >
+            <AccordionItem value="appearance">
+              <AccordionTrigger data-testid="settings-section-appearance">Appearance</AccordionTrigger>
+              <AccordionContent>
+                <Row label="Theme">
+                  {(["light", "dark"] as const).map((theme) => (
+                    <Button
+                      key={theme}
+                      data-testid={`theme-${theme}`}
+                      size="xs"
+                      variant={settings.theme === theme ? "default" : "outline"}
+                      className="capitalize"
+                      onClick={() => setSettings({ theme })}
+                    >
+                      {theme}
+                    </Button>
+                  ))}
+                </Row>
+                <Row label={`Reading size · ${settings.readingSize.toFixed(1)}×`}>
+                  <Button
+                    aria-label="Decrease reading size"
+                    data-testid="reading-down"
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      setSettings({ readingSize: clampReading(settings.readingSize - 0.1) })
+                    }
+                  >
+                    −
+                  </Button>
+                  <Button
+                    aria-label="Reset reading size"
+                    data-testid="reading-reset"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setSettings({ readingSize: 1 })}
+                  >
+                    1.0×
+                  </Button>
+                  <Button
+                    aria-label="Increase reading size"
+                    data-testid="reading-up"
+                    size="xs"
+                    variant="outline"
+                    disabled={settings.readingSize >= MAX_READING}
+                    onClick={() =>
+                      setSettings({ readingSize: clampReading(settings.readingSize + 0.1) })
+                    }
+                  >
+                    +
+                  </Button>
+                  <span className="db-hint">
+                    {MIN_READING}–{MAX_READING}
+                  </span>
+                </Row>
+              </AccordionContent>
+            </AccordionItem>
 
-          <section>
-            <h3>Asking</h3>
-            <PresetEditor />
-          </section>
+            <AccordionItem value="asking">
+              <AccordionTrigger data-testid="settings-section-asking">Asking</AccordionTrigger>
+              <AccordionContent>
+                <PresetEditor />
+              </AccordionContent>
+            </AccordionItem>
 
-          <section>
-            <h3>Model</h3>
-            <ProviderForm
-              kind="model"
-              status={providers.model}
-              onSaved={(next) => setProviders((current) => ({ ...current, model: next }))}
-            />
-          </section>
+            <AccordionItem value="providers" data-testid="settings-providers">
+              <AccordionTrigger data-testid="settings-section-providers">Providers</AccordionTrigger>
+              <AccordionContent>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="db-hint">Model generates and validates answers.</p>
+                  <Badge>Required</Badge>
+                </div>
+                <ProviderForm
+                  kind="model"
+                  status={providers.model}
+                  onSaved={(next) => {
+                    setProviders((current) => ({ ...current, model: next }));
+                    onModelSaved?.();
+                  }}
+                />
 
-          <section>
-            <h3>Search</h3>
-            <ProviderForm
-              kind="search"
-              status={providers.search}
-              onSaved={(next) => setProviders((current) => ({ ...current, search: next }))}
-            />
-          </section>
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <p className="db-hint">Search retrieves web pages as evidence for answers.</p>
+                  <Badge variant="outline">Optional</Badge>
+                </div>
+                <ProviderForm
+                  kind="search"
+                  status={providers.search}
+                  onSaved={(next) => setProviders((current) => ({ ...current, search: next }))}
+                />
+              </AccordionContent>
+            </AccordionItem>
 
-          <section>
-            <h3>Account</h3>
-            <Account email={user.email} onSignOut={onSignOut} />
-          </section>
+            <AccordionItem value="account">
+              <AccordionTrigger data-testid="settings-section-account">Account</AccordionTrigger>
+              <AccordionContent>
+                <Row label="Email">
+                  <span data-testid="account-email" className="text-xs text-muted-foreground">
+                    {user.email}
+                  </span>
+                </Row>
+                <Row label="Session">
+                  <Button data-testid="sign-out" size="xs" variant="outline" onClick={() => onSignOut()}>
+                    Sign out
+                  </Button>
+                </Row>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
 
         <footer className="db-sheet-foot">DeepBurrow {__APP_VERSION__}</footer>

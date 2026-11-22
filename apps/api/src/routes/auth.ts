@@ -14,62 +14,50 @@ import {
   consumeRefreshToken,
   createAccount,
   findUserByEmail,
-  getAuthUser,
   refreshRecord,
-  revokeAllSessions,
   revokeSession,
-  setPassword,
 } from "../db.ts";
-import {
-  REFRESH_TTL,
-  digest,
-  hashPassword,
-  verifyPassword,
-  verifyRefresh,
-} from "../security.ts";
-
-type Credentials = { email?: unknown; password?: unknown };
+import { consumeCode, discardCode, issueCode } from "../login-codes.ts";
+import { sendLoginCode } from "../mailer.ts";
+import { REFRESH_TTL, digest, verifyRefresh } from "../security.ts";
 
 export const authRoutes = new Hono<AuthEnv>();
 
 const normalizeEmail = (value: unknown) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
-const validPassword = (value: unknown): value is string =>
-  typeof value === "string" && value.length >= 10 && value.length <= 200;
-
 const validEmail = (email: string) =>
   email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-authRoutes.post("/sign-up", async (c) => {
-  if (throttled(c, "sign-up")) return c.json({ error: "Too many attempts" }, 429);
-  const body = await c.req.json<Credentials>().catch(() => null);
+// Login and account creation share one flow. Whether the account exists stays
+// hidden: both paths answer the same and only account creation happens later.
+authRoutes.post("/email", async (c) => {
+  const body = await c.req.json<{ email?: unknown }>().catch(() => null);
   const email = normalizeEmail(body?.email);
-  const password = body?.password;
-  if (!validEmail(email) || !validPassword(password)) {
-    penalize(c, "sign-up");
-    return c.json({ error: "Use a valid email and a password of at least 10 characters" }, 400);
+  if (!validEmail(email)) return c.json({ error: "Enter a valid email address" }, 400);
+
+  const code = issueCode(email);
+  if (code) {
+    try {
+      await sendLoginCode(email, code);
+    } catch {
+      discardCode(email);
+      return c.json({ error: "Could not send the code" }, 503);
+    }
   }
-  try {
-    const user = createAccount(email, hashPassword(password));
-    issueSession(c, user.id);
-    return c.json(sessionPayload(user.id), 201);
-  } catch {
-    penalize(c, "sign-up");
-    return c.json({ error: "Could not create account" }, 409);
-  }
+  return c.json({ ok: true }, 202);
 });
 
-authRoutes.post("/sign-in", async (c) => {
-  if (throttled(c, "sign-in")) return c.json({ error: "Too many attempts" }, 429);
-  const body = await c.req.json<Credentials>().catch(() => null);
+authRoutes.post("/verify", async (c) => {
+  if (throttled(c, "verify")) return c.json({ error: "Too many attempts" }, 429);
+  const body = await c.req.json<{ email?: unknown; code?: unknown }>().catch(() => null);
   const email = normalizeEmail(body?.email);
-  const password = typeof body?.password === "string" ? body.password : "";
-  const user = findUserByEmail(email);
-  if (!user || !verifyPassword(password, user.passwordHash)) {
-    penalize(c, "sign-in");
-    return c.json({ error: "Invalid email or password" }, 401);
+  const code = typeof body?.code === "string" ? body.code.trim() : "";
+  if (!validEmail(email) || !/^\d{6}$/.test(code) || !consumeCode(email, code)) {
+    penalize(c, "verify");
+    return c.json({ error: "Invalid or expired code" }, 401);
   }
+  const user = findUserByEmail(email) ?? createAccount(email);
   issueSession(c, user.id);
   return c.json(sessionPayload(user.id));
 });
@@ -113,26 +101,4 @@ authRoutes.post("/logout", (c) => {
 authRoutes.get("/me", (c) => {
   const session = sessionPayload(c.get("userId"));
   return session ? c.json(session) : c.json({ error: "Unauthorized" }, 401);
-});
-
-authRoutes.post("/change-password", async (c) => {
-  const body = await c.req
-    .json<{ currentPassword?: unknown; newPassword?: unknown }>()
-    .catch(() => null);
-  const current = body?.currentPassword;
-  const next = body?.newPassword;
-  if (!validPassword(next)) {
-    return c.json({ error: "New password must be at least 10 characters" }, 400);
-  }
-  const user = getAuthUser(c.get("userId"));
-  if (!user || typeof current !== "string" || !verifyPassword(current, user.passwordHash)) {
-    return c.json({ error: "Current password is incorrect" }, 401);
-  }
-  if (verifyPassword(next, user.passwordHash)) {
-    return c.json({ error: "Choose a different password" }, 400);
-  }
-  setPassword(user.id, hashPassword(next));
-  revokeAllSessions(user.id);
-  clearAuthCookies(c);
-  return c.body(null, 204);
 });
