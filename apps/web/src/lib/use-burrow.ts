@@ -32,11 +32,15 @@ const send = (path: string, method: "PATCH" | "POST" | "DELETE", body?: unknown)
     body: body ? JSON.stringify(body) : undefined,
   });
 
-export function useBurrow(burrowId: string) {
+export function useBurrow(burrowId: string, initialFocusId?: string | null) {
   const [nodes, setNodes] = useState<BurrowNode[]>([]);
   const [viewport, setViewport] = useState<Viewport>(DEFAULT_VIEWPORT);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // The card this client just created; the canvas centers one target, whether
+  // it is the first card of a new burrow or a later branch.
+  const [focusId, setFocusId] = useState<string | null>(initialFocusId ?? null);
+  const clearFocus = useCallback(() => setFocusId(null), []);
 
   const controllers = useRef(new Map<string, AbortController>());
   const viewportTimer = useRef<number>(undefined);
@@ -120,6 +124,7 @@ export function useBurrow(burrowId: string) {
         // The first event is the stored row: adopt its id, then follow it.
         if (!id) {
           id = event.nodeId;
+          setFocusId(id);
           controllers.current.set(id, controller);
         }
         onEvent(event);
@@ -224,6 +229,8 @@ export function useBurrow(burrowId: string) {
   return {
     viewport,
     nodes,
+    focusId,
+    clearFocus,
     loading,
     loadError,
     reload: load,

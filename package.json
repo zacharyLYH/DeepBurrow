@@ -11,6 +11,7 @@
     "build": "npm run build -w @deepburrow/web",
     "lint": "tsc --noEmit",
     "test": "playwright test",
+    "walkthrough": "WALKTHROUGH=1 playwright test tests/walkthrough.spec.ts",
     "api": "npm run api -w @deepburrow/api"
   },
   "devDependencies": {

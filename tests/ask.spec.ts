@@ -141,7 +141,7 @@ test("load failure offers retry", async ({ page }) => {
       ? route.fulfill({ status: 500, body: "boom" })
       : route.fulfill({ json: { burrow: fixtureBurrow, nodes: fixtureNodes } }),
   );
-  await page.goto("/");
+  await page.goto("/app");
 
   await expect(page.getByText("Couldn't load the burrow.")).toBeVisible();
   await expect(page).toHaveScreenshot("load-error.png");

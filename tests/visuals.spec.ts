@@ -10,13 +10,13 @@ const shot = async (page: import("@playwright/test").Page, name: string) =>
   expect(page).toHaveScreenshot(name, { animations: "disabled" });
 
 test("login page", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/sign-in");
   await expect(page.getByTestId("auth-screen")).toBeVisible();
   await shot(page, "login.png");
 });
 
 test("account creation code page", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/sign-in");
   await page.getByTestId("auth-email").fill(demoCredentials.email);
   await page.getByTestId("auth-submit").click();
   await expect(page.getByTestId("auth-code")).toBeVisible();
@@ -34,7 +34,7 @@ test("settings sheet", async ({ page }) => {
 test("workspace without a model shows a centered dismissible prompt", async ({ page }) => {
   clearProviders();
   await signIn(page);
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.getByTestId("model-prompt")).toBeVisible();
   await shot(page, "model-prompt.png");
 
@@ -146,13 +146,13 @@ test.describe("mobile", () => {
   test.use(iphone13);
 
   test("login page", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/sign-in");
     await expect(page.getByTestId("auth-screen")).toBeVisible();
     await shot(page, "login-mobile.png");
   });
 
   test("account creation code page", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/sign-in");
     await page.getByTestId("auth-email").fill(demoCredentials.email);
     await page.getByTestId("auth-submit").tap();
     await expect(page.getByTestId("auth-code")).toBeVisible();
@@ -162,7 +162,7 @@ test.describe("mobile", () => {
   test("workspace without a model prompt", async ({ page }) => {
     clearProviders();
     await signIn(page);
-    await page.goto("/");
+    await page.goto("/app");
     await expect(page.getByTestId("model-prompt")).toBeVisible();
     await shot(page, "model-prompt-mobile.png");
 

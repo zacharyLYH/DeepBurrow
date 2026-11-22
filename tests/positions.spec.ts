@@ -92,7 +92,7 @@ test("a clean browser lands on the stored camera with no local state", async ({ 
   const context = await browser.newContext({ baseURL: "http://localhost:5173" });
   const clean = await context.newPage();
   await signInContext(context);
-  await clean.goto("/");
+  await clean.goto("/app");
   await expect(clean.locator(".react-flow__node")).toHaveCount(4);
 
   const matrix = await viewportMatrix(clean);

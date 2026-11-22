@@ -74,7 +74,25 @@ export function AuthScreen({
   const emailStep = step === "email";
 
   return (
-    <main data-testid="auth-screen" className="flex min-h-dvh items-center justify-center p-6">
+    <main
+      data-testid="auth-screen"
+      className="relative flex min-h-dvh items-center justify-center p-6"
+    >
+      <a
+        href="/"
+        data-testid="auth-home"
+        aria-label="Back to DeepBurrow home"
+        className="absolute left-4 top-4 flex items-center gap-2 text-sm font-semibold tracking-tight text-muted-foreground hover:text-foreground"
+      >
+        <img
+          src="/deepburrow_logo.png"
+          alt=""
+          className="size-7 rounded-md object-contain"
+          width={28}
+          height={28}
+        />
+        DeepBurrow
+      </a>
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-xl tracking-tight">DeepBurrow</CardTitle>

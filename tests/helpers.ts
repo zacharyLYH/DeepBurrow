@@ -38,7 +38,7 @@ export async function signInContext(context: BrowserContext) {
 
 export async function open(page: Page, count = baseCount) {
   await signIn(page);
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.locator(".react-flow__node")).toHaveCount(count);
   // One edge per non-root node, anchored to the card's DOM handles.
   await expect(page.locator(".react-flow__edge")).toHaveCount(count - 1);

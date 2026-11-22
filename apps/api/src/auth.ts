@@ -112,11 +112,6 @@ export const guard: MiddlewareHandler<AuthEnv> = async (c, next) => {
         .map((item) => item.trim())
         .filter(Boolean),
     );
-    allowed.add(new URL(c.req.url).origin);
-    if (process.env.NODE_ENV !== "production") {
-      allowed.add("http://localhost:5173");
-      allowed.add("http://127.0.0.1:5173");
-    }
     if (origin && !allowed.has(origin)) return c.json({ error: "Forbidden" }, 403);
     if (!origin && c.req.header("sec-fetch-site") === "cross-site") {
       return c.json({ error: "Forbidden" }, 403);

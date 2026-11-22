@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { titleFromAsk } from "@deepburrow/types";
 import { useReactFlow } from "@xyflow/react";
 import { apiFetch, onAuthExpired, type Session } from "@/lib/api";
 import { AuthScreen } from "@/components/auth-screen";
 import { BurrowSidebar } from "@/components/burrow-sidebar";
+import { Landing } from "@/components/landing";
 import { AskPopover } from "@/components/ask-popover";
 import { Canvas } from "@/components/canvas";
 import { Lightbox } from "@/components/markdown";
@@ -38,9 +39,23 @@ function Notice({ children }: { children: React.ReactNode }) {
   );
 }
 
+const readPath = () => window.location.pathname;
+
 export function AuthGate() {
   const [session, setSession] = useState<Session | null>();
   const [notice, setNotice] = useState("");
+  const [path, setPath] = useState(readPath);
+
+  const navigate = useCallback((next: string) => {
+    if (window.location.pathname !== next) window.history.pushState({}, "", next);
+    setPath(next);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setPath(readPath());
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -60,6 +75,15 @@ export function AuthGate() {
     };
   }, []);
 
+  // The landing page is public and never redirects. The workspace sends signed-out
+  // visitors to sign in, and a signed-in visitor on sign-in goes to the workspace.
+  useEffect(() => {
+    if (session === undefined) return;
+    if (session && path === "/sign-in") navigate("/app");
+    if (!session && path !== "/" && path !== "/sign-in") navigate("/sign-in");
+  }, [session, path, navigate]);
+
+  if (path === "/") return <Landing signedIn={Boolean(session)} />;
   if (session === undefined) return <Notice>Loading account…</Notice>;
   if (session === null) {
     return (
@@ -68,10 +92,12 @@ export function AuthGate() {
         onSession={(next) => {
           setNotice("");
           setSession(next);
+          navigate("/app");
         }}
       />
     );
   }
+  if (path === "/sign-in") return <Notice>Opening workspace…</Notice>;
 
   return (
     <App
@@ -81,6 +107,7 @@ export function AuthGate() {
         resetSettings();
         setNotice(message);
         setSession(null);
+        navigate("/sign-in");
       }}
     />
   );
@@ -95,6 +122,7 @@ export function App({
 }) {
   const { burrows, loading, loadError, reload, create, rename } = useBurrows();
   const [selectedId, setSelectedId] = useState(() => recallBurrow(session.user.id));
+  const [created, setCreated] = useState<{ burrowId: string; nodeId: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [modelConfigured, setModelConfigured] = useState<boolean>();
   const [promptDismissed, setPromptDismissed] = useState(false);
@@ -117,6 +145,7 @@ export function App({
 
   const select = useCallback(
     (id: string) => {
+      setCreated((current) => (current?.burrowId === id ? current : null));
       setSelectedId(id);
       rememberBurrow(session.user.id, id);
     },
@@ -130,12 +159,14 @@ export function App({
     if ("error" in result) return result.error;
     const burrowId = result.burrow.id;
     const controller = new AbortController();
+    let nodeId = "";
     await new Promise<void>((resolve) => {
       void askApi(
         { parentId: null, burrowId, origin: { question } },
         controller.signal,
         (event) => {
           if (event.type !== "node.pending") return;
+          nodeId = event.nodeId;
           controller.abort();
           resolve();
         },
@@ -143,6 +174,7 @@ export function App({
         .catch(() => undefined)
         .finally(resolve);
     });
+    setCreated({ burrowId, nodeId });
     select(burrowId);
     return null;
   };
@@ -182,6 +214,7 @@ export function App({
             showModelPrompt={modelConfigured === false && !promptDismissed}
             onDismissPrompt={() => setPromptDismissed(true)}
             onModelSaved={() => setModelConfigured(true)}
+            initialFocusId={selected.id === created?.burrowId ? created.nodeId : null}
           />
         </SidebarInset>
         <NewBurrowDialog open={newOpen} onOpenChange={setNewOpen} onCreate={startBurrow} />
@@ -200,6 +233,7 @@ function Workspace({
   showModelPrompt,
   onDismissPrompt,
   onModelSaved,
+  initialFocusId,
 }: {
   session: Session;
   burrowId: string;
@@ -209,15 +243,15 @@ function Workspace({
   showModelPrompt: boolean;
   onDismissPrompt: () => void;
   onModelSaved: () => void;
+  initialFocusId: string | null;
 }) {
-  const burrow = useBurrow(burrowId);
+  const burrow = useBurrow(burrowId, initialFocusId);
   const settings = useSettings();
   const { fitView, setCenter } = useReactFlow();
 
   const [overlay, setOverlay] = useState<Overlay | null>(null);
 
   const byId = useMemo(() => new Map(burrow.nodes.map((node) => [node.id, node])), [burrow.nodes]);
-  const lastId = burrow.nodes.at(-1)?.id;
   const { passage, clearPassage } = usePassageSelection();
 
   // The server owns the camera: the canvas starts at the stored viewport and
@@ -226,30 +260,24 @@ function Workspace({
 
   // Nodes carry a seed size, so the camera can center before measurement.
   const center = useCallback(
-    (id: string) => {
+    (id: string, duration = 300) => {
       const at = byId.get(id)?.position;
       if (!at) return;
-      void setCenter(at.x + CARD_WIDTH / 2, at.y + CARD_HEIGHT / 2, { zoom: 0.9, duration: 300 });
+      void setCenter(at.x + CARD_WIDTH / 2, at.y + CARD_HEIGHT / 2, { zoom: 0.9, duration });
     },
     [byId, setCenter],
   );
 
-  // A new card arrives server-placed. The first card of a restored frame is part
-  // of it, so only later arrivals move the camera — unless the burrow was empty,
-  // where there is no frame and the card would land in the corner.
-  const wasEmpty = useRef(false);
-  useEffect(() => {
-    if (!burrow.loading && burrow.nodes.length === 0) wasEmpty.current = true;
-  }, [burrow.loading, burrow.nodes.length]);
-
-  const centered = useRef<string | null>(null);
+  // One focus target for every card this client creates: the first card of a
+  // new burrow and every later branch take the same path. Opening a burrow
+  // reads its stored camera instead, because nothing requested focus.
+  const { focusId, clearFocus } = burrow;
   useEffect(() => {
     // setCenter is a no-op until React Flow has sized the pane.
-    if (!cameraReady || !lastId || centered.current === lastId) return;
-    const first = centered.current === null;
-    centered.current = lastId;
-    if (!first || wasEmpty.current) center(lastId);
-  }, [cameraReady, lastId, center]);
+    if (!cameraReady || !focusId || !byId.has(focusId)) return;
+    center(focusId, 0);
+    clearFocus();
+  }, [cameraReady, focusId, byId, center, clearFocus]);
 
   const actions: CardActions = {
     onFollowUp: burrow.followUp,

@@ -3,6 +3,24 @@ import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { toggleTheme, useSettings } from "@/lib/settings";
 
+function HomeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+      aria-hidden
+    >
+      <path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+      <path d="M9 21v-8h6v8" />
+    </svg>
+  );
+}
+
 function ThemeIcon({ dark }: { dark: boolean }) {
   return (
     <svg
@@ -55,6 +73,15 @@ export function Toolbar({
   return (
     <div data-testid="toolbar" className="db-toolbar">
       <div className="db-toolbar-group">
+        <a
+          href="/"
+          data-testid="open-home"
+          aria-label="Back to DeepBurrow home"
+          title="Back to home"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <HomeIcon />
+        </a>
         <SidebarTrigger />
         <Button aria-label="Zoom out" title="Zoom out" size="xs" variant="ghost" onClick={() => void zoomOut({ duration: 150 })}>
           −

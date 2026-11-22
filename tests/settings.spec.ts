@@ -92,7 +92,7 @@ test("edits land on user columns and a clean client reads them back", async ({ p
   const context = await browser.newContext({ baseURL: "http://localhost:5173" });
   const clean = await context.newPage();
   await signInContext(context);
-  await clean.goto("/");
+  await clean.goto("/app");
   await expect(clean.locator(".react-flow__node")).toHaveCount(4);
   await expect(clean.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await clean.evaluate(() => localStorage.length)).toBe(0);

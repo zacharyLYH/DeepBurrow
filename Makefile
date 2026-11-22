@@ -3,7 +3,7 @@
 env:
 	@touch apps/api/.env
 	@grep -q '^AUTH_SECRET=' apps/api/.env || echo "AUTH_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" >> apps/api/.env
-	@for key in SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_FROM; do \
+	@for key in APP_ORIGIN SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_FROM; do \
 		grep -q "^$$key=" apps/api/.env || { echo "Missing $$key in apps/api/.env"; exit 1; }; \
 	done
 

@@ -396,16 +396,33 @@
 
 .db-toolbar {
   position: absolute;
-  top: 10px;
+  top: 20px;
   right: 10px;
   z-index: 30;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   gap: 6px;
+  max-width: calc(100% - 20px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.db-toolbar::-webkit-scrollbar {
+  height: 6px;
+}
+.db-toolbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.db-toolbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
 }
 .db-toolbar-group {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 1px;
   padding: 2px;
@@ -625,14 +642,17 @@
 
 @media (max-width: 640px) {
   .db-toolbar {
-    right: 6px;
-    left: 6px;
-    top: 6px;
+    right: 0;
+    left: 0;
+    top: max(52px, calc(env(safe-area-inset-top, 0px) + 8px));
+    width: fit-content;
+    max-width: calc(100% - 12px);
+    margin-inline: auto;
     gap: 4px;
   }
   .db-toolbar-group {
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
   }
   .db-sheet {
     top: auto;

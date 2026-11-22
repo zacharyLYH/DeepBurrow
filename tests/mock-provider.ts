@@ -94,7 +94,7 @@ const lastUserText = (messages: MockMessage[]) =>
 const answerFor = (ask: string) => {
   const title = titleFromAsk(ask) || "Untitled";
   if (ask.includes("zzempty")) return [...header(title), ""].join("\n");
-  if (ask.includes("zzmd")) {
+  if (ask.includes("zzmd") || ask.includes("diagram and math")) {
     return [...header(title), "FOLLOWUPS: Why probe? | When back off?", "", RICH_BODY].join("\n");
   }
   return [
@@ -125,7 +125,7 @@ const defaultReply = (latencyMs: number): MockReply => {
     if (call.maxResults !== undefined) return { content: "Search results were unavailable." };
     if (ask.includes("zztimeout")) return { delay: 5000 };
 
-    const latency = ask.includes("zzslow") ? 1500 : latencyMs;
+    const latency = ask.includes("zzslow") || ask.includes("double per RTT") ? 1500 : latencyMs;
     if (ask.includes("zzfail") && !failedOnce.has(ask)) {
       failedOnce.add(ask);
       // 400 is not retried automatically, so the card fails once for real.

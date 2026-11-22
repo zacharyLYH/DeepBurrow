@@ -62,7 +62,7 @@ const withFreshApi = async (env: Record<string, string>, run: (base: string) => 
 };
 
 test("signed-out users enter email, receive a code, and sign in", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/sign-in");
   await expect(page.getByTestId("auth-screen")).toBeVisible();
 
   await page.getByTestId("auth-email").fill(demoCredentials.email);
@@ -78,6 +78,25 @@ test("signed-out users enter email, receive a code, and sign in", async ({ page 
   await expect(page.getByTestId("auth-screen")).toHaveCount(0);
   await expect(page.locator(".react-flow__node")).toHaveCount(4);
   await expect(page.getByTestId("burrow-title")).toHaveText("TCP congestion control");
+});
+
+test("a new email registers and opens its burrow in one flow", async ({ page }) => {
+  const email = unique();
+  await page.goto("/sign-in");
+  await page.getByTestId("auth-email").fill(email);
+  await page.getByTestId("auth-submit").click();
+  await expect(page.getByTestId("auth-code")).toBeVisible();
+
+  const code = await latestCode(email);
+  const otp = page.locator('input[data-testid="auth-code"], [data-testid="auth-code"] input');
+  await otp.focus();
+  await page.keyboard.type(code);
+  await page.getByTestId("auth-submit").click();
+
+  await expect(page.getByTestId("auth-screen")).toHaveCount(0);
+  expect(new URL(page.url()).pathname).toBe("/app");
+  await expect(page.getByTestId("workspace")).toBeVisible();
+  await expect(page.getByTestId("empty-canvas")).toBeVisible();
 });
 
 test("a new email creates the account only after the code is confirmed", async () => {
@@ -103,6 +122,29 @@ test("a new email creates the account only after the code is confirmed", async (
     | undefined;
   saved.close();
   expect(after?.id).toBe(auth.session.user.id);
+});
+
+test("proxied origins are trusted via the forwarded host", async () => {
+  await withFreshApi(
+    { NODE_ENV: "production", AUTH_SECRET: "test-secret-at-least-32-characters-long" },
+    async (base) => {
+      const allowed = await request(base, "/auth/logout", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:9994",
+          "x-forwarded-host": "localhost:9994",
+          "x-forwarded-proto": "http",
+        },
+      });
+      expect(allowed.status).toBe(204);
+
+      const denied = await request(base, "/auth/logout", {
+        method: "POST",
+        headers: { origin: "http://evil.example" },
+      });
+      expect(denied.status).toBe(403);
+    },
+  );
 });
 
 test("responses never reveal whether an account exists", async () => {
@@ -262,7 +304,7 @@ test("an expired access cookie refreshes transparently", async ({ page }) => {
     },
   ]);
 
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.getByTestId("auth-screen")).toHaveCount(0);
   await expect(page.getByTestId("empty-canvas")).toBeVisible();
   expect((await page.request.get("/api/auth/me")).ok()).toBe(true);

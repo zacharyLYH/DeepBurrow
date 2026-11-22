@@ -151,7 +151,7 @@ test("a desktop drag lands on mobile unchanged", async ({ page }) => {
   const phone = await page.context().browser()!.newContext({ ...iphone13, baseURL: "http://localhost:5173" });
   const mobile = await phone.newPage();
   await signInContext(phone);
-  await mobile.goto("/");
+  await mobile.goto("/app");
   await expect(mobile.locator(".react-flow__node")).toHaveCount(4);
 
   const matrix = await viewportMatrix(mobile);
