@@ -3,6 +3,7 @@ import type { Event, Meta, Node } from "../../../packages/types/src/types.ts";
 import { lineage, putNode } from "./db.ts";
 import { buildGraph, type GraphChunk } from "./graph.ts";
 import { agentProviders } from "./provider.ts";
+import { notifyCompletion } from "./push.ts";
 
 // View-layer pacing so tokens land one at a time like a real stream.
 const TOKEN_PACE_MS = Number(process.env.TOKEN_PACE_MS ?? 18);
@@ -82,6 +83,7 @@ async function execute(run: Run, node: Node, ask: string) {
     if (!answer.trim()) throw new Error("Empty answer");
 
     save(run.userId, node, { ...meta, markdown: answer, status: "answered", error: "" });
+    void notifyCompletion(run.userId, node.burrowId, node.id).catch(() => undefined);
   } catch (cause) {
     const why = run.abort.signal.reason;
     const status = why === "cancel" ? "stopped" : "failed";

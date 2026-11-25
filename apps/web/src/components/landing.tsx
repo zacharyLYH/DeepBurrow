@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { INSTALL_STEPS, InstallSteps } from "@/components/install";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -247,21 +248,6 @@ function ChromeToolbar() {
   );
 }
 
-function InstallSteps({ steps }: { steps: ReactNode[] }) {
-  return (
-    <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
-      {steps.map((step, index) => (
-        <li key={index} className="flex gap-2.5">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-            {index + 1}
-          </span>
-          <span className="min-w-0">{step}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 export function Landing({ signedIn }: { signedIn: boolean }) {
   return (
     <div data-testid="landing" className="min-h-dvh bg-background">
@@ -347,38 +333,14 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
               <CardContent className="py-4">
                 <h3 className="text-sm font-semibold">iOS and iPadOS</h3>
                 <SafariToolbar />
-                <InstallSteps
-                  steps={[
-                    <>
-                      Open DeepBurrow in <strong>Safari</strong>.
-                    </>,
-                    <>
-                      Tap the <strong>Share</strong> icon in the toolbar.
-                    </>,
-                    <>
-                      Tap <strong>Add to Home Screen</strong>, then <strong>Add</strong>.
-                    </>,
-                  ]}
-                />
+                <InstallSteps steps={INSTALL_STEPS.ios} />
               </CardContent>
             </Card>
             <Card data-testid="install-android">
               <CardContent className="py-4">
                 <h3 className="text-sm font-semibold">Android</h3>
                 <ChromeToolbar />
-                <InstallSteps
-                  steps={[
-                    <>
-                      Open DeepBurrow in <strong>Chrome</strong>.
-                    </>,
-                    <>
-                      Tap the <strong>⋮</strong> menu in the address bar.
-                    </>,
-                    <>
-                      Tap <strong>Install app</strong> or <strong>Add to Home screen</strong>.
-                    </>,
-                  ]}
-                />
+                <InstallSteps steps={INSTALL_STEPS.android} />
                 <p className="mt-2 text-xs text-muted-foreground">
                   Menus can vary by browser.
                 </p>

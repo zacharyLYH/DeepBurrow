@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { MAILBOX_PORT, smtpEnv } from "./tests/mock-smtp.ts";
+import { PUSH_PORT, PUSH_RELAY } from "./tests/mock-push.ts";
 import { MOCK_PROVIDER_PORT } from "./tests/mock-provider.ts";
 
 export default defineConfig({
@@ -29,6 +30,7 @@ export default defineConfig({
         RUN_TIMEOUT_MS: process.env.RUN_TIMEOUT_MS ?? "6000",
         ALLOW_PRIVATE_PROVIDERS: "1",
         LLM_TIMEOUT_MS: process.env.LLM_TIMEOUT_MS ?? "2000",
+        PUSH_RELAY,
         ...smtpEnv,
       },
     },
@@ -44,6 +46,11 @@ export default defineConfig({
       url: `http://127.0.0.1:${MOCK_PROVIDER_PORT}/health`,
       reuseExistingServer: !process.env.CI,
       env: { MOCK_LATENCY_MS: "500" },
+    },
+    {
+      command: "node tests/mock-push-server.ts",
+      url: `http://127.0.0.1:${PUSH_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
     },
     {
       command: "npm run dev -w @deepburrow/web -- --port 5173 --strictPort",

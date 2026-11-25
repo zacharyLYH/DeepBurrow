@@ -12,6 +12,7 @@ import type { CardActions } from "@/components/node-card";
 import { NewBurrowDialog } from "@/components/new-burrow-dialog";
 import { EmptyCanvas, Shortcuts } from "@/components/overlays";
 import { Palette } from "@/components/palette";
+import { PushPrompt, usePush } from "@/components/push";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toolbar } from "@/components/toolbar";
@@ -21,6 +22,7 @@ import { Toaster, toast } from "@/components/ui/sonner";
 import { cardMarkdown } from "@/lib/copy";
 import { exportBurrowHtml } from "@/lib/export";
 import { CARD_HEIGHT, CARD_WIDTH } from "@/lib/layout";
+import { removePush } from "@/lib/push";
 import { loadSettings, presetsFor, resetSettings, toggleTheme, useSettings } from "@/lib/settings";
 import { usePassageSelection } from "@/lib/use-passage";
 import { useShortcuts } from "@/lib/use-shortcuts";
@@ -41,14 +43,39 @@ function Notice({ children }: { children: React.ReactNode }) {
 
 const readPath = () => window.location.pathname;
 
+function OfflineNotice() {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine);
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+  return online ? null : (
+    <div
+      data-testid="offline-notice"
+      className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-lg"
+    >
+      You’re offline. Sign-in, burrow loading, asks and completion notifications need a connection; nothing was queued.
+    </div>
+  );
+}
+
 export function AuthGate() {
   const [session, setSession] = useState<Session | null>();
   const [notice, setNotice] = useState("");
   const [path, setPath] = useState(readPath);
+  const [signInSearch] = useState(() => window.location.search);
 
-  const navigate = useCallback((next: string) => {
-    if (window.location.pathname !== next) window.history.pushState({}, "", next);
-    setPath(next);
+  const navigate = useCallback((url: string) => {
+    const target = new URL(url, window.location.origin);
+    if (window.location.pathname + window.location.search !== target.pathname + target.search) {
+      window.history.pushState({}, "", target.pathname + target.search);
+    }
+    setPath(target.pathname);
   }, []);
 
   useEffect(() => {
@@ -60,6 +87,7 @@ export function AuthGate() {
   useEffect(() => {
     let live = true;
     const expired = onAuthExpired(() => {
+      void removePush();
       resetSettings();
       if (live) setSession(null);
     });
@@ -89,10 +117,11 @@ export function AuthGate() {
     return (
       <AuthScreen
         notice={notice}
-        onSession={(next) => {
+        onSession={(session) => {
+          void removePush();
           setNotice("");
-          setSession(next);
-          navigate("/app");
+          setSession(session);
+          navigate(`/app${signInSearch}`);
         }}
       />
     );
@@ -103,7 +132,8 @@ export function AuthGate() {
     <App
       session={session}
       onSignOut={(message = "") => {
-        void fetch("/api/auth/logout", { method: "POST" });
+        // Delete the server row before logout clears the cookie.
+        void removePush().finally(() => fetch("/api/auth/logout", { method: "POST" }));
         resetSettings();
         setNotice(message);
         setSession(null);
@@ -121,7 +151,13 @@ export function App({
   onSignOut: (notice?: string) => void;
 }) {
   const { burrows, loading, loadError, reload, create, rename } = useBurrows();
-  const [selectedId, setSelectedId] = useState(() => recallBurrow(session.user.id));
+  const [deepLink] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return { burrowId: query.get("burrow"), nodeId: query.get("node") };
+  });
+  const [selectedId, setSelectedId] = useState(
+    () => deepLink.burrowId ?? recallBurrow(session.user.id),
+  );
   const [created, setCreated] = useState<{ burrowId: string; nodeId: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [modelConfigured, setModelConfigured] = useState<boolean>();
@@ -194,6 +230,7 @@ export function App({
 
   return (
     <div data-testid="app" className="h-dvh w-full overflow-hidden">
+      <OfflineNotice />
       <SidebarProvider>
         <BurrowSidebar
           burrows={burrows}
@@ -214,7 +251,13 @@ export function App({
             showModelPrompt={modelConfigured === false && !promptDismissed}
             onDismissPrompt={() => setPromptDismissed(true)}
             onModelSaved={() => setModelConfigured(true)}
-            initialFocusId={selected.id === created?.burrowId ? created.nodeId : null}
+            initialFocusId={
+              selected.id === created?.burrowId
+                ? created.nodeId
+                : selected.id === deepLink.burrowId
+                  ? deepLink.nodeId
+                  : null
+            }
           />
         </SidebarInset>
         <NewBurrowDialog open={newOpen} onOpenChange={setNewOpen} onCreate={startBurrow} />
@@ -247,6 +290,7 @@ function Workspace({
 }) {
   const burrow = useBurrow(burrowId, initialFocusId);
   const settings = useSettings();
+  const push = usePush();
   const { fitView, setCenter } = useReactFlow();
 
   const [overlay, setOverlay] = useState<Overlay | null>(null);
@@ -403,12 +447,15 @@ function Workspace({
         ]}
       />
 
+      <PushPrompt push={push} userId={session.user.id} />
+
       <SettingsSheet
         open={overlay === "settings"}
         onClose={() => setOverlay(null)}
         user={session.user}
         onSignOut={onSignOut}
         onModelSaved={onModelSaved}
+        push={push}
       />
       <Shortcuts open={overlay === "shortcuts"} onClose={() => setOverlay(null)} />
       <Lightbox />

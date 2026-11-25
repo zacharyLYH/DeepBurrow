@@ -29,6 +29,7 @@ const PUBLIC = new Set([
   "/auth/verify",
   "/auth/refresh",
   "/auth/logout",
+  "/push/key",
 ]);
 
 const cookieOptions = { httpOnly: true, sameSite: "Lax" as const, secure: COOKIE_SECURE };

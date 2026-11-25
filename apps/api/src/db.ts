@@ -11,6 +11,7 @@ import {
   type NodeStatus,
   type Origin,
   type Preset,
+  type PushSubscription,
   type UserSettings,
   type Viewport,
 } from "../../../packages/types/src/types.ts";
@@ -477,4 +478,30 @@ export function rotateRefreshToken(id: string, oldHash: string, newHash: string)
 
 export function revokeRefreshToken(id: string) {
   db.prepare("DELETE FROM refresh_tokens WHERE id = ?").run(id);
+}
+
+export function savePushSubscription(userId: string, subscription: PushSubscription) {
+  db.prepare(
+    `INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET
+       user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth,
+       created_at = excluded.created_at`,
+  ).run(subscription.endpoint, userId, subscription.p256dh, subscription.auth, Date.now());
+}
+
+export function deletePushSubscription(endpoint: string) {
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(endpoint);
+}
+
+export function hasPushSubscription(userId: string, endpoint: string) {
+  return Boolean(
+    db.prepare("SELECT 1 FROM push_subscriptions WHERE endpoint = ? AND user_id = ?").get(endpoint, userId),
+  );
+}
+
+export function listPushSubscriptions(userId: string): PushSubscription[] {
+  return db
+    .prepare("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?")
+    .all(userId) as PushSubscription[];
 }

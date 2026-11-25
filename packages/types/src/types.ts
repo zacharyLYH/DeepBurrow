@@ -53,6 +53,16 @@ export type Node = {
 
 export type Meta = { title: string; sources: Source[]; followups: string[] };
 
+export type PushSubscription = { endpoint: string; p256dh: string; auth: string };
+
+export type PushPayload = {
+  title: string;
+  body: string;
+  burrowId?: string;
+  nodeId?: string;
+  testId?: string;
+};
+
 export type Event = { nodeId: string } & (
   | { type: "node.pending"; node: Node }
   | ({ type: "node.meta" } & Meta)

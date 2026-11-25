@@ -5,6 +5,7 @@ import { ask } from "./routes/ask.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { burrowRoutes } from "./routes/burrows.ts";
 import { nodeRoutes } from "./routes/nodes.ts";
+import { pushRoutes } from "./routes/push.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 
 export const app = new Hono<AuthEnv>();
@@ -15,6 +16,7 @@ app.route("/auth", authRoutes);
 app.route("/burrows", burrowRoutes);
 app.route("/settings", settingsRoutes);
 app.route("/nodes", nodeRoutes);
+app.route("/push", pushRoutes);
 app.post("/ask", ask);
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -47,6 +47,7 @@ export function seedDemo(dataDir: string) {
       );
     }
     db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?").run(fixtureBurrow.userId);
+    db.prepare("DELETE FROM push_subscriptions WHERE user_id = ?").run(fixtureBurrow.userId);
 
     const insert = db.prepare(
       `INSERT INTO nodes

@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { INSTALL_STEPS, InstallSteps, detectInstallOs } from "@/components/install";
+import { PushSettings, type PushController } from "@/components/push";
 import { apiFetch } from "@/lib/api";
 import {
   DEFAULT_PRESETS,
@@ -223,16 +225,19 @@ export function SettingsSheet({
   user,
   onSignOut,
   onModelSaved,
+  push,
 }: {
   open: boolean;
   onClose: () => void;
   user: { id: string; email: string };
   onSignOut: (notice?: string) => void;
   onModelSaved?: () => void;
+  push: PushController;
 }) {
   const settings = useSettings();
   const [providers, setProviders] = useState<Partial<Record<ProviderKind, ProviderSummary>>>({});
   const [openSections, setOpenSections] = useState<string[]>(["appearance"]);
+  const installSteps = INSTALL_STEPS[detectInstallOs()];
 
   // One read per open. A missing model opens Providers so the fix is visible.
   useEffect(() => {
@@ -359,6 +364,27 @@ export function SettingsSheet({
                   status={providers.search}
                   onSaved={(next) => setProviders((current) => ({ ...current, search: next }))}
                 />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="notifications">
+              <AccordionTrigger data-testid="settings-section-notifications">
+                Notifications
+              </AccordionTrigger>
+              <AccordionContent>
+                <PushSettings push={push} />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="install">
+              <AccordionTrigger data-testid="settings-section-install">Install</AccordionTrigger>
+              <AccordionContent>
+                <p className="db-hint">
+                  Add DeepBurrow to your home screen. Your browser handles the install.
+                </p>
+                <div data-testid="install-steps">
+                  <InstallSteps steps={installSteps} />
+                </div>
               </AccordionContent>
             </AccordionItem>
 

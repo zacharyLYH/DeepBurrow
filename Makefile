@@ -3,7 +3,8 @@
 env:
 	@touch apps/api/.env
 	@grep -q '^AUTH_SECRET=' apps/api/.env || echo "AUTH_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" >> apps/api/.env
-	@for key in APP_ORIGIN SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_FROM; do \
+	@node scripts/vapid.mjs
+	@for key in APP_ORIGIN SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_FROM VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do \
 		grep -q "^$$key=" apps/api/.env || { echo "Missing $$key in apps/api/.env"; exit 1; }; \
 	done
 

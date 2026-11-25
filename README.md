@@ -81,6 +81,7 @@ SQLite via `node:sqlite`, raw SQL, no ORM. Lineage is the node parent chain.
 ```
 users(id, email, model_base_url, model_name, model_api_key_enc, search_base_url, search_model, search_api_key_enc, theme, reading_size, presets_linked, selection_presets, followup_presets)
 refresh_tokens(id, user_id, token_hash, created_at, expires_at)
+push_subscriptions(endpoint, user_id, p256dh, auth, created_at)
 burrows(id, user_id, title)
 nodes(id, burrow_id, parent_id, title, markdown, origin, sources, followups, status, error, canvas, deleted_at)
 ```
@@ -101,6 +102,7 @@ Every private query is scoped to the authenticated user's ID. Burrows are owned 
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` — required by `make start` for six-digit email login codes.
 - `make start` generates and preserves `AUTH_SECRET` when missing, then checks SMTP configuration before starting.
 - `APP_ORIGIN` — comma-separated browser origins allowed to send state-changing requests; localhost is always allowed.
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — Web Push credentials. `make start` generates missing keys and prompts for a `mailto:` or `https://` subject.
 - Access lasts 15 minutes, refresh 30 days, and 10 failed attempts per IP/scope are allowed per 15 minutes. Production cookies are Secure.
 - Tests seed the demo account and fixture burrow themselves; the API never creates a demo account.
 

@@ -16,6 +16,10 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/web-push": "^3.6.4"
   }
 }

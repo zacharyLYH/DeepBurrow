@@ -28,8 +28,14 @@ const login = async (request: APIRequestContext) => {
   expect(response.ok()).toBe(true);
 };
 
-export async function signIn(page: Page) {
+export async function signIn(page: Page, { keepPushPrompt = false } = {}) {
   await login(page.request);
+  // Visual specs stay about the canvas; the push prompt has its own spec.
+  if (!keepPushPrompt) {
+    await page.addInitScript((id) => {
+      localStorage.setItem(`deepburrow:push-dismissed:${id}`, "1");
+    }, fixtureBurrow.userId);
+  }
 }
 
 export async function signInContext(context: BrowserContext) {
