@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
-import { digest, signAccess, signRefresh } from "../apps/api/src/security.ts";
+import { expect, test, type Page } from "@playwright/test";
+import { signAccess } from "../apps/api/src/security.ts";
 import { demoCredentials } from "../packages/types/src/fixtures.ts";
 import { readCookies, type CookieJar } from "./api-auth.ts";
 import { resetDemoBurrow, TEST_DB_PATH } from "./db.ts";
@@ -60,6 +59,19 @@ const withFreshApi = async (env: Record<string, string>, run: (base: string) => 
     await api.stop();
   }
 };
+
+const setCookie = (page: Page, name: string, value: string, path: string) =>
+  page.context().addCookies([
+    {
+      name,
+      value,
+      domain: "localhost",
+      path,
+      httpOnly: true,
+      secure: false,
+      sameSite: "Lax",
+    },
+  ]);
 
 test("signed-out users enter email, receive a code, and sign in", async ({ page }) => {
   await page.goto("/sign-in");
@@ -124,19 +136,25 @@ test("a new email creates the account only after the code is confirmed", async (
   expect(after?.id).toBe(auth.session.user.id);
 });
 
-test("proxied origins are trusted via the forwarded host", async () => {
+test("localhost and configured origins are allowed, others are rejected", async () => {
   await withFreshApi(
-    { NODE_ENV: "production", AUTH_SECRET: "test-secret-at-least-32-characters-long" },
+    {
+      NODE_ENV: "production",
+      AUTH_SECRET: "test-secret-at-least-32-characters-long",
+      APP_ORIGIN: "https://app.example",
+    },
     async (base) => {
-      const allowed = await request(base, "/auth/logout", {
+      const local = await request(base, "/auth/logout", {
         method: "POST",
-        headers: {
-          origin: "http://localhost:9994",
-          "x-forwarded-host": "localhost:9994",
-          "x-forwarded-proto": "http",
-        },
+        headers: { origin: "http://localhost:9994" },
       });
-      expect(allowed.status).toBe(204);
+      expect(local.status).toBe(204);
+
+      const configured = await request(base, "/auth/logout", {
+        method: "POST",
+        headers: { origin: "https://app.example" },
+      });
+      expect(configured.status).toBe(204);
 
       const denied = await request(base, "/auth/logout", {
         method: "POST",
@@ -229,26 +247,23 @@ test("refresh rotates, keeps cookie attributes, and rejects reuse", async () => 
   const oldRefresh = user.cookies.db_refresh;
   expect(oldRefresh).toBeTruthy();
 
-  const refreshClaims = JSON.parse(
-    Buffer.from(oldRefresh.split(".")[1], "base64url").toString("utf8"),
-  ) as { sid: string };
-  const expiredId = randomUUID();
-  const expiredToken = signRefresh(
-    user.session.user.id,
-    refreshClaims.sid,
-    expiredId,
-    Math.floor(Date.now() / 1000) - 1,
-  );
-  const db = new DatabaseSync(TEST_DB_PATH);
-  db.prepare(
-    "INSERT INTO refresh_tokens (id, session_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(expiredId, refreshClaims.sid, digest(expiredToken), Date.now() - 60_000, Date.now() - 1_000);
-  db.close();
-  expect(
-    (await call("/auth/refresh", { method: "POST", cookie: `db_refresh=${expiredToken}` })).status,
-  ).toBe(401);
   expect(
     (await call("/auth/refresh", { method: "POST", cookie: "db_refresh=not-a-token" })).status,
+  ).toBe(401);
+
+  const expired = await login(unique());
+  const [expiredId = ""] = expired.cookies.db_refresh.split(".");
+  const db = new DatabaseSync(TEST_DB_PATH);
+  db.prepare("UPDATE refresh_tokens SET expires_at = ? WHERE id = ?").run(
+    Date.now() - 1_000,
+    expiredId,
+  );
+  db.close();
+  expect(
+    (await call("/auth/refresh", {
+      method: "POST",
+      cookie: `db_refresh=${expired.cookies.db_refresh}`,
+    })).status,
   ).toBe(401);
 
   const refresh = await call("/auth/refresh", {
@@ -264,7 +279,7 @@ test("refresh rotates, keeps cookie attributes, and rejects reuse", async () => 
   const refreshCookie = rotated.raw.find((value) => value.startsWith("db_refresh="))!;
   expect(refreshCookie).toContain("HttpOnly");
   expect(refreshCookie).toMatch(/SameSite=Lax/i);
-  expect(refreshCookie).toContain("Path=/api/auth/refresh");
+  expect(refreshCookie).toContain("Path=/api/auth");
   expect(refreshCookie).toContain("Max-Age=");
   const accessCookie = rotated.raw.find((value) => value.startsWith("db_access="))!;
   expect(accessCookie).toContain("HttpOnly");
@@ -292,17 +307,7 @@ test("an expired access cookie refreshes transparently", async ({ page }) => {
   expect(response.ok()).toBe(true);
   const session = (await response.json()) as Session;
 
-  await page.context().addCookies([
-    {
-      name: "db_access",
-      value: signAccess(session.user.id, -1),
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      secure: false,
-      sameSite: "Lax",
-    },
-  ]);
+  await setCookie(page, "db_access", signAccess(session.user.id, -1), "/");
 
   await page.goto("/app");
   await expect(page.getByTestId("auth-screen")).toHaveCount(0);
@@ -310,10 +315,10 @@ test("an expired access cookie refreshes transparently", async ({ page }) => {
   expect((await page.request.get("/api/auth/me")).ok()).toBe(true);
 });
 
-test("logout revokes the refresh token", async () => {
+test("logout revokes the refresh token", async ({ page }) => {
   const user = await login(unique());
-  const logout = await call("/auth/logout", { method: "POST", cookie: user.cookie });
-  expect(logout.status).toBe(204);
+  await setCookie(page, "db_refresh", user.cookies.db_refresh, "/api/auth");
+  expect((await page.request.post("/api/auth/logout")).status()).toBe(204);
   expect(
     (await call("/auth/refresh", {
       method: "POST",

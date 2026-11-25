@@ -50,23 +50,13 @@ CREATE INDEX IF NOT EXISTS burrows_by_user ON burrows(user_id, created_at);
 -- Titles are unique per owner, case-insensitively. Different users may share one.
 CREATE UNIQUE INDEX IF NOT EXISTS burrows_unique_title ON burrows(user_id, lower(title));
 
-CREATE TABLE IF NOT EXISTS auth_sessions (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  revoked_at INTEGER
-);
-
-CREATE INDEX IF NOT EXISTS sessions_by_user ON auth_sessions(user_id, expires_at);
-
+-- One row per login. The cookie carries `id.secret`; only sha256(secret) is stored.
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL REFERENCES auth_sessions(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  used_at INTEGER
+  expires_at INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS refresh_tokens_by_session ON refresh_tokens(session_id, expires_at);
+CREATE INDEX IF NOT EXISTS refresh_tokens_by_user ON refresh_tokens(user_id, expires_at);

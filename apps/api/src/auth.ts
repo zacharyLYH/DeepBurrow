@@ -1,12 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context, MiddlewareHandler } from "hono";
 import {
-  appendRefreshToken,
-  createSession,
+  createRefreshToken,
   getUser,
   primaryBurrow,
-  revokeSession,
+  rotateRefreshToken,
+  type RefreshRecord,
 } from "./db.ts";
 import {
   ACCESS_TTL,
@@ -14,7 +14,6 @@ import {
   REFRESH_TTL,
   digest,
   signAccess,
-  signRefresh,
   verifyAccess,
 } from "./security.ts";
 
@@ -23,7 +22,7 @@ export type AuthContext = Context<AuthEnv>;
 
 const ACCESS_COOKIE = "db_access";
 const REFRESH_COOKIE = "db_refresh";
-const REFRESH_PATH = "/api/auth/refresh";
+const REFRESH_PATH = "/api/auth";
 const PUBLIC = new Set([
   "/health",
   "/auth/email",
@@ -38,6 +37,12 @@ const refreshCookie = { ...cookieOptions, path: REFRESH_PATH };
 const ATTEMPT_LIMIT = 10;
 const ATTEMPT_WINDOW = 15 * 60 * 1000;
 const failures = new Map<string, { count: number; reset: number }>();
+const configuredOrigins = new Set(
+  (process.env.APP_ORIGIN ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+);
 
 const attemptKey = (c: AuthContext, scope: string) => {
   const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
@@ -68,16 +73,24 @@ export const sessionPayload = (userId: string) => {
     : null;
 };
 
-export function issueRefresh(c: AuthContext, userId: string, sessionId: string, expiresAt: number) {
-  const tokenId = randomUUID();
-  const token = signRefresh(userId, sessionId, tokenId, Math.floor(expiresAt / 1000));
-  appendRefreshToken(sessionId, tokenId, digest(token), expiresAt);
-  writeAuthCookies(c, userId, token, expiresAt);
+const newRefresh = (id: string) => {
+  const secret = randomBytes(32).toString("base64url");
+  return { token: `${id}.${secret}`, hash: digest(secret) };
+};
+
+export function issueRefresh(c: AuthContext, record: RefreshRecord) {
+  const next = newRefresh(record.id);
+  if (!rotateRefreshToken(record.id, record.tokenHash, next.hash)) return false;
+  writeAuthCookies(c, record.userId, next.token, record.expiresAt);
+  return true;
 }
 
 export function issueSession(c: AuthContext, userId: string) {
+  const id = randomUUID();
+  const next = newRefresh(id);
   const expiresAt = Date.now() + REFRESH_TTL * 1000;
-  issueRefresh(c, userId, createSession(userId, expiresAt), expiresAt);
+  createRefreshToken(id, userId, next.hash, expiresAt);
+  writeAuthCookies(c, userId, next.token, expiresAt);
 }
 
 function writeAuthCookies(
@@ -96,23 +109,37 @@ export function clearAuthCookies(c: AuthContext) {
   deleteCookie(c, REFRESH_COOKIE, refreshCookie);
 }
 
-export const readRefreshCookie = (c: AuthContext) => getCookie(c, REFRESH_COOKIE);
+export function readRefreshSession(c: AuthContext) {
+  const [id, secret, ...rest] = (getCookie(c, REFRESH_COOKIE) ?? "").split(".");
+  if (!id || !secret || rest.length > 0) return null;
+  return { id, secret };
+}
 
 export function rejectAuth(c: AuthContext) {
   clearAuthCookies(c);
   return c.json({ error: "Unauthorized" }, 401);
 }
 
+// Local development and the local Docker build always run on localhost, so
+// those origins are allowed in addition to APP_ORIGIN.
+const localOrigin = (origin: string) => {
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const guard: MiddlewareHandler<AuthEnv> = async (c, next) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     const origin = c.req.header("origin");
-    const allowed = new Set(
-      (process.env.APP_ORIGIN ?? "")
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    );
-    if (origin && !allowed.has(origin)) return c.json({ error: "Forbidden" }, 403);
+    if (origin && !configuredOrigins.has(origin) && !localOrigin(origin)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
     if (!origin && c.req.header("sec-fetch-site") === "cross-site") {
       return c.json({ error: "Forbidden" }, 403);
     }

@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const ISSUER = "deepburrow";
-const AUDIENCE = { access: "deepburrow-access", refresh: "deepburrow-refresh" } as const;
+const AUDIENCE = "deepburrow-access";
 
 export const secret = process.env.AUTH_SECRET ?? "dev-only-auth-secret-change-me-32-chars";
 if (secret.length < 32) throw new Error("AUTH_SECRET must be at least 32 characters");
@@ -9,9 +9,8 @@ if (process.env.NODE_ENV === "production" && !process.env.AUTH_SECRET) {
   throw new Error("AUTH_SECRET is required in production");
 }
 
-// Separate derived keys keep one token type from being accepted as another.
-const key = (audience: string) =>
-  createHmac("sha256", secret).update(`deepburrow:${audience}`).digest();
+// Domain separation keeps this key from being reused for other HMACs.
+const signingKey = createHmac("sha256", secret).update(`deepburrow:${AUDIENCE}`).digest();
 
 export const ACCESS_TTL = 15 * 60;
 export const REFRESH_TTL = 30 * 24 * 60 * 60;
@@ -23,22 +22,20 @@ type Claims = {
   aud: string;
   iat: number;
   exp: number;
-  sid?: string;
-  jti?: string;
 };
 
 const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
-const sign = (claims: Claims, audience: string) => {
+const sign = (claims: Claims) => {
   const head = encode({ alg: "HS256", typ: "JWT" });
   const body = encode(claims);
-  const signature = createHmac("sha256", key(audience))
+  const signature = createHmac("sha256", signingKey)
     .update(`${head}.${body}`)
     .digest("base64url");
   return `${head}.${body}.${signature}`;
 };
 
-const verify = (token: string, audience: string, ignoreExpiry = false): Claims | null => {
+const verify = (token: string): Claims | null => {
   const [head, body, signature] = token.split(".");
   if (!head || !body || !signature) return null;
 
@@ -50,7 +47,7 @@ const verify = (token: string, audience: string, ignoreExpiry = false): Claims |
   }
   if (header.alg !== "HS256") return null;
 
-  const expected = createHmac("sha256", key(audience))
+  const expected = createHmac("sha256", signingKey)
     .update(`${head}.${body}`)
     .digest();
   const actual = Buffer.from(signature, "base64url");
@@ -67,11 +64,11 @@ const verify = (token: string, audience: string, ignoreExpiry = false): Claims |
   if (
     typeof claims.sub !== "string" ||
     claims.iss !== ISSUER ||
-    claims.aud !== audience ||
+    claims.aud !== AUDIENCE ||
     typeof claims.iat !== "number" ||
     typeof claims.exp !== "number" ||
     claims.iat > now + 60 ||
-    (!ignoreExpiry && claims.exp <= now)
+    claims.exp <= now
   ) {
     return null;
   }
@@ -80,40 +77,19 @@ const verify = (token: string, audience: string, ignoreExpiry = false): Claims |
 
 export function signAccess(userId: string, ttl = ACCESS_TTL) {
   const now = Math.floor(Date.now() / 1000);
-  return sign(
-    { sub: userId, iss: ISSUER, aud: AUDIENCE.access, iat: now, exp: now + ttl },
-    AUDIENCE.access,
-  );
+  return sign({ sub: userId, iss: ISSUER, aud: AUDIENCE, iat: now, exp: now + ttl });
 }
 
 export function verifyAccess(token: string) {
-  return verify(token, AUDIENCE.access);
+  return verify(token);
 }
-
-export function signRefresh(
-  userId: string,
-  sessionId: string,
-  tokenId: string,
-  expiresAt = Math.floor(Date.now() / 1000) + REFRESH_TTL,
-) {
-  const now = Math.floor(Date.now() / 1000);
-  return sign(
-    {
-      sub: userId,
-      sid: sessionId,
-      jti: tokenId,
-      iss: ISSUER,
-      aud: AUDIENCE.refresh,
-      iat: now,
-      exp: expiresAt,
-    },
-    AUDIENCE.refresh,
-  );
-}
-
-export const verifyRefresh = (token: string, ignoreExpiry = false) =>
-  verify(token, AUDIENCE.refresh, ignoreExpiry);
 
 export function digest(value: string) {
   return createHash("sha256").update(value).digest("base64url");
+}
+
+export function digestMatches(value: string, hash: string) {
+  const actual = Buffer.from(digest(value));
+  const expected = Buffer.from(hash);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

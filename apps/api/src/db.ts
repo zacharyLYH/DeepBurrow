@@ -67,14 +67,10 @@ const NODE_COLUMNS =
 
 export type User = { id: string; email: string };
 export type RefreshRecord = {
-  tokenId: string;
-  sessionId: string;
+  id: string;
   userId: string;
   tokenHash: string;
-  tokenExpiresAt: number;
-  usedAt: number | null;
-  sessionExpiresAt: number;
-  sessionRevokedAt: number | null;
+  expiresAt: number;
 };
 
 const dataDir = process.env.DATA_DIR ?? fileURLToPath(new URL("../../../data/", import.meta.url));
@@ -449,78 +445,36 @@ export function lineage(userId: string, nodeId: string): string {
   return rows.map((row) => `${row.title}\n${row.markdown}`).join("\n\n");
 }
 
-export function createSession(userId: string, expiresAt: number) {
-  const id = randomUUID();
-  db.prepare(
-    "INSERT INTO auth_sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-  ).run(id, userId, Date.now(), expiresAt);
-  return id;
-}
-
-export function refreshRecord(sessionId: string, tokenId: string): RefreshRecord | null {
-  const row = db
-    .prepare(
-      `SELECT t.id AS token_id, t.session_id, t.token_hash, t.expires_at AS token_expires_at,
-              t.used_at, s.user_id, s.expires_at AS session_expires_at, s.revoked_at
-       FROM refresh_tokens t
-       JOIN auth_sessions s ON s.id = t.session_id
-       WHERE t.id = ? AND t.session_id = ?`,
-    )
-    .get(tokenId, sessionId) as
-    | {
-        token_id: string;
-        session_id: string;
-        token_hash: string;
-        token_expires_at: number;
-        used_at: number | null;
-        user_id: string;
-        session_expires_at: number;
-        revoked_at: number | null;
-      }
-    | undefined;
-  if (!row) return null;
-  return {
-    tokenId: row.token_id,
-    sessionId: row.session_id,
-    userId: row.user_id,
-    tokenHash: row.token_hash,
-    tokenExpiresAt: row.token_expires_at,
-    usedAt: row.used_at,
-    sessionExpiresAt: row.session_expires_at,
-    sessionRevokedAt: row.revoked_at,
-  };
-}
-
-export function consumeRefreshToken(sessionId: string, tokenId: string) {
-  const result = db
-    .prepare(
-      "UPDATE refresh_tokens SET used_at = ? WHERE id = ? AND session_id = ? AND used_at IS NULL",
-    )
-    .run(Date.now(), tokenId, sessionId);
-  return result.changes === 1;
-}
-
-export function appendRefreshToken(
-  sessionId: string,
-  tokenId: string,
+export function createRefreshToken(
+  id: string,
+  userId: string,
   tokenHash: string,
   expiresAt: number,
 ) {
   db.prepare(
-    "INSERT INTO refresh_tokens (id, session_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(tokenId, sessionId, tokenHash, Date.now(), expiresAt);
+    "INSERT INTO refresh_tokens (id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+  ).run(id, userId, tokenHash, Date.now(), expiresAt);
 }
 
-export function revokeSession(sessionId: string) {
-  db.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(
-    Date.now(),
-    sessionId,
-  );
+export function findRefreshToken(id: string): RefreshRecord | null {
+  const row = db
+    .prepare(
+      `SELECT id, user_id AS userId, token_hash AS tokenHash, expires_at AS expiresAt
+       FROM refresh_tokens WHERE id = ?`,
+    )
+    .get(id) as RefreshRecord | undefined;
+  return row ?? null;
 }
 
-export function revokeAllSessions(userId: string) {
-  db.prepare(
-    "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
-  ).run(Date.now(), userId);
+export function rotateRefreshToken(id: string, oldHash: string, newHash: string) {
+  const result = db
+    .prepare(
+      "UPDATE refresh_tokens SET token_hash = ? WHERE id = ? AND token_hash = ? AND expires_at > ?",
+    )
+    .run(newHash, id, oldHash, Date.now());
+  return result.changes === 1;
 }
 
+export function revokeRefreshToken(id: string) {
+  db.prepare("DELETE FROM refresh_tokens WHERE id = ?").run(id);
+}

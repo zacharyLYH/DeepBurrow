@@ -46,7 +46,7 @@ export function seedDemo(dataDir: string) {
         burrow.updatedAt,
       );
     }
-    db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run(fixtureBurrow.userId);
+    db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?").run(fixtureBurrow.userId);
 
     const insert = db.prepare(
       `INSERT INTO nodes

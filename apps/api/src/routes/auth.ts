@@ -4,22 +4,21 @@ import {
   issueRefresh,
   issueSession,
   penalize,
-  readRefreshCookie,
+  readRefreshSession,
   rejectAuth,
   sessionPayload,
   throttled,
   type AuthEnv,
 } from "../auth.ts";
 import {
-  consumeRefreshToken,
   createAccount,
+  findRefreshToken,
   findUserByEmail,
-  refreshRecord,
-  revokeSession,
+  revokeRefreshToken,
 } from "../db.ts";
 import { consumeCode, discardCode, issueCode } from "../login-codes.ts";
 import { sendLoginCode } from "../mailer.ts";
-import { REFRESH_TTL, digest, verifyRefresh } from "../security.ts";
+import { digestMatches } from "../security.ts";
 
 export const authRoutes = new Hono<AuthEnv>();
 
@@ -62,38 +61,27 @@ authRoutes.post("/verify", async (c) => {
   return c.json(sessionPayload(user.id));
 });
 
-authRoutes.post("/refresh", async (c) => {
-  const token = readRefreshCookie(c);
-  const claims = token ? verifyRefresh(token) : null;
-  if (!token || !claims?.sub || !claims.sid || !claims.jti) return rejectAuth(c);
+authRoutes.post("/refresh", (c) => {
+  const session = readRefreshSession(c);
+  if (!session) return rejectAuth(c);
 
-  const record = refreshRecord(claims.sid, claims.jti);
-  if (!record || record.userId !== claims.sub || record.tokenHash !== digest(token)) {
-    return rejectAuth(c);
-  }
-  if (record.usedAt !== null) {
-    revokeSession(record.sessionId);
-    return rejectAuth(c);
-  }
-  const now = Date.now();
+  const record = findRefreshToken(session.id);
+  if (!record) return rejectAuth(c);
+
   if (
-    record.sessionRevokedAt !== null ||
-    record.sessionExpiresAt <= now ||
-    record.tokenExpiresAt <= now ||
-    !consumeRefreshToken(record.sessionId, record.tokenId)
+    record.expiresAt <= Date.now() ||
+    !digestMatches(session.secret, record.tokenHash) ||
+    !issueRefresh(c, record)
   ) {
+    revokeRefreshToken(record.id);
     return rejectAuth(c);
   }
-
-  const expiresAt = Math.min(record.sessionExpiresAt, now + REFRESH_TTL * 1000);
-  issueRefresh(c, record.userId, record.sessionId, expiresAt);
   return c.json(sessionPayload(record.userId));
 });
 
 authRoutes.post("/logout", (c) => {
-  const token = readRefreshCookie(c);
-  const claims = token ? verifyRefresh(token, true) : null;
-  if (claims?.sid) revokeSession(claims.sid);
+  const session = readRefreshSession(c);
+  if (session) revokeRefreshToken(session.id);
   clearAuthCookies(c);
   return c.body(null, 204);
 });
